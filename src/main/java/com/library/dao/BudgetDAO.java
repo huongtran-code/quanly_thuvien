@@ -13,7 +13,28 @@ public class BudgetDAO {
 
     private final DatabaseConnection db = DatabaseConnection.getInstance();
 
+    /**
+     * Đồng bộ lại số tiền đã chi của tất cả ngân sách từ đơn mua (APPROVED / RECEIVED)
+     */
+    public void syncSpentAmounts() {
+        String sql = """
+                UPDATE budgets b
+                SET spent_amount = (
+                    SELECT COALESCE(SUM(po.total_amount), 0)
+                    FROM purchase_orders po
+                    WHERE po.budget_id = b.id AND po.status IN ('APPROVED', 'RECEIVED')
+                )
+                """;
+        try (Connection conn = db.getConnection();
+             Statement stmt = conn.createStatement()) {
+            stmt.executeUpdate(sql);
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
     public List<Budget> findAll() {
+        syncSpentAmounts();
         List<Budget> list = new ArrayList<>();
         String sql = "SELECT * FROM budgets ORDER BY fiscal_year DESC, budget_name";
         try (Connection conn = db.getConnection();
