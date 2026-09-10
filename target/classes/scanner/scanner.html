@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Quét mã vạch — Thư viện</title>
+<style>
+  :root {
+    --bg: #0f172a; --card: #1e293b; --input: #334155; --border: #475569;
+    --text: #f8fafc; --muted: #94a3b8; --primary: #6366f1;
+    --green: #10b981; --red: #ef4444; --amber: #f59e0b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, "Segoe UI", Roboto, sans-serif; min-height: 100vh; padding: 16px; }
+  h1 { font-size: 18px; text-align: center; margin-bottom: 4px; }
+  .sub { text-align: center; color: var(--muted); font-size: 12px; margin-bottom: 16px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px; margin-bottom: 14px; }
+  .mode { display: flex; gap: 8px; }
+  .mode button { flex: 1; padding: 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--input); color: var(--muted); font-size: 15px; font-weight: 700; }
+  .mode button.active-import { background: var(--green); border-color: var(--green); color: #fff; }
+  .mode button.active-export { background: var(--amber); border-color: var(--amber); color: #fff; }
+  label { display: block; color: var(--muted); font-size: 13px; margin: 10px 0 4px; }
+  input[type=number], input[type=text] { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--input); color: var(--text); font-size: 16px; }
+  .row { display: flex; gap: 8px; align-items: flex-end; }
+  .row > div { flex: 1; }
+  .btn { display: block; width: 100%; padding: 14px; margin-top: 10px; border: none; border-radius: 10px; background: var(--primary); color: #fff; font-size: 16px; font-weight: 700; }
+  .btn:disabled { opacity: .5; }
+  .btn.secondary { background: var(--input); color: var(--text); border: 1px solid var(--border); }
+  #reader { width: 100%; border-radius: 10px; overflow: hidden; }
+  #reader video { border-radius: 10px; }
+  #result { border-radius: 10px; padding: 12px; font-size: 14px; display: none; margin-top: 10px; line-height: 1.4; }
+  #result.ok { background: rgba(16,185,129,.15); border: 1px solid var(--green); color: #6ee7b7; display: block; }
+  #result.err { background: rgba(239,68,68,.15); border: 1px solid var(--red); color: #fca5a5; display: block; }
+  #camHint { color: var(--muted); font-size: 12px; margin-top: 8px; text-align: center; }
+</style>
+</head>
+<body>
+  <h1>📷 Quét mã vạch kho sách</h1>
+  <div class="sub">Kết nối trực tiếp với máy tính thư viện</div>
+
+  <div class="card">
+    <div class="mode">
+      <button id="btnImport" class="active-import">⬇ NHẬP KHO</button>
+      <button id="btnExport">⬆ XUẤT KHO</button>
+    </div>
+    <label for="qty">Số lượng mỗi lần quét</label>
+    <input type="number" id="qty" value="1" min="1" max="1000" inputmode="numeric">
+  </div>
+
+  <div class="card" id="cameraCard">
+    <div id="reader"></div>
+    <button class="btn" id="btnCamera">📸 Bật camera quét mã</button>
+    <div id="camHint"></div>
+  </div>
+
+  <div class="card">
+    <label for="manual">Hoặc nhập mã vạch (ISBN) thủ công</label>
+    <div class="row">
+      <div><input type="text" id="manual" placeholder="VD: 978-604-0-1001" inputmode="text"></div>
+    </div>
+    <button class="btn secondary" id="btnSend">Gửi</button>
+  </div>
+
+  <div id="result"></div>
+
+<script src="html5-qrcode.min.js"></script>
+<script>
+(function () {
+  var token = new URLSearchParams(location.search).get('t') || '';
+  var mode = 'import';
+  var btnCamera = document.getElementById('btnCamera');
+  var camHint = document.getElementById('camHint');
+  var resultBox = document.getElementById('result');
+  var scanner = null, scanning = false, lastCode = '', lastTime = 0;
+
+  // ── Chuyển chế độ ──
+  var btnImport = document.getElementById('btnImport');
+  var btnExport = document.getElementById('btnExport');
+  btnImport.onclick = function () {
+    mode = 'import';
+    btnImport.className = 'active-import';
+    btnExport.className = '';
+  };
+  btnExport.onclick = function () {
+    mode = 'export';
+    btnExport.className = 'active-export';
+    btnImport.className = '';
+  };
+
+  // ── Gửi mã về desktop ──
+  function send(barcode) {
+    var qty = parseInt(document.getElementById('qty').value, 10) || 1;
+    fetch('/api/scan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: token, barcode: barcode, mode: mode, qty: qty })
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      resultBox.className = data.ok ? 'ok' : 'err';
+      resultBox.textContent = data.message || 'Không có phản hồi';
+      if (navigator.vibrate) navigator.vibrate(data.ok ? 80 : [80, 60, 80]);
+    })
+    .catch(function () {
+      resultBox.className = 'err';
+      resultBox.textContent = 'Mất kết nối với máy tính!';
+    });
+  }
+
+  document.getElementById('btnSend').onclick = function () {
+    var input = document.getElementById('manual');
+    var code = input.value.trim();
+    if (code) { send(code); input.value = ''; }
+  };
+  document.getElementById('manual').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') document.getElementById('btnSend').click();
+  });
+
+  // ── Camera + html5-qrcode (hoạt động trên MỌI trình duyệt kể cả Safari) ──
+  function onScanSuccess(decodedText) {
+    var now = Date.now();
+    // Chống quét trùng: bỏ qua cùng mã trong 2.5 giây
+    if (decodedText && (decodedText !== lastCode || now - lastTime > 2500)) {
+      lastCode = decodedText;
+      lastTime = now;
+      send(decodedText);
+    }
+  }
+
+  btnCamera.onclick = function () {
+    if (scanning) {
+      stopCamera();
+      return;
+    }
+    startCamera();
+  };
+
+  function startCamera() {
+    scanner = new Html5Qrcode("reader");
+    scanner.start(
+      { facingMode: "environment" },
+      {
+        fps: 10,
+        qrbox: function (viewfinderWidth, viewfinderHeight) {
+          var minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+          var size = Math.floor(minEdge * 0.75);
+          return { width: size, height: Math.floor(size * 0.6) };
+        },
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+          Html5QrcodeSupportedFormats.QR_CODE
+        ]
+      },
+      onScanSuccess,
+      function () { /* ignore scan errors (no barcode found in frame) */ }
+    ).then(function () {
+      scanning = true;
+      btnCamera.textContent = '⏹ Tắt camera';
+      camHint.textContent = 'Hướng camera vào mã vạch để quét';
+    }).catch(function (err) {
+      camHint.textContent = 'Không mở được camera. Kiểm tra quyền camera của trình duyệt.';
+      console.error('Camera error:', err);
+    });
+  }
+
+  function stopCamera() {
+    if (scanner) {
+      scanner.stop().then(function () {
+        scanner.clear();
+        scanning = false;
+        btnCamera.textContent = '📸 Bật camera quét mã';
+        camHint.textContent = '';
+      }).catch(function () {
+        scanning = false;
+        btnCamera.textContent = '📸 Bật camera quét mã';
+      });
+    }
+  }
+})();
+</script>
+</body>
+</html>
