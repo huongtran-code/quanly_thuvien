@@ -82,27 +82,19 @@ public class PurchaseOrderController {
     }
 
     /**
-     * Nhận hàng → cộng tồn kho & trừ ngân sách (nếu chưa duyệt)
+     * Nhận hàng → cộng tồn kho.
+     * Chỉ được nhận khi đơn đã ở trạng thái APPROVED (đã duyệt).
+     * Quy trình bắt buộc: DRAFT → APPROVED → RECEIVED.
      */
     public String receiveOrder(int orderId) {
         PurchaseOrder order = orderDAO.findById(orderId);
         if (order == null) return "Đơn mua không tồn tại!";
         if ("RECEIVED".equals(order.getStatus())) return "Đơn mua đã nhận hàng rồi!";
         if ("CANCELLED".equals(order.getStatus())) return "Không thể nhận hàng đơn đã bị hủy!";
+        if ("DRAFT".equals(order.getStatus()))
+            return "Đơn chưa được duyệt! Vui lòng Duyệt trước rồi mới Nhận hàng.";
 
-        // Nếu đơn đang ở DRAFT → trừ ngân sách trước khi nhận hàng
-        if ("DRAFT".equals(order.getStatus())) {
-            Budget budget = budgetDAO.findById(order.getBudgetId());
-            if (budget == null || !budget.isActive()) {
-                return "Ngân sách không hợp lệ!";
-            }
-            if (budget.getRemainingAmount() < order.getTotalAmount()) {
-                return "Ngân sách không đủ! Còn lại: " + String.format("%,.0f", budget.getRemainingAmount()) + " ₫";
-            }
-            budgetDAO.updateSpent(order.getBudgetId(), order.getTotalAmount());
-        }
-
-        // Cộng tồn kho cho từng tài liệu
+        // Cộng tồn kho cho từng tài liệu (ngân sách đã được trừ ở bước Duyệt)
         for (PurchaseOrderItem item : order.getItems()) {
             documentDAO.updateStock(item.getDocumentId(), item.getQuantity());
         }

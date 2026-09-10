@@ -7,6 +7,7 @@ com\library\view\DocumentPanel$1.class
 com\library\view\components\StyledTable$StockAwareRenderer.class
 com\library\model\Supplier.class
 com\library\view\components\StyledTable$StatusRenderer.class
+com\library\view\MainFrame$1.class
 com\library\view\CustomerPurchasePanel.class
 com\library\config\AIConfig.class
 com\library\controller\PurchaseOrderController.class
@@ -20,7 +21,6 @@ com\library\view\ScannerPanel.class
 com\library\dao\PurchaseOrderDAO.class
 com\library\util\AppConstants.class
 com\library\dao\SupplierDAO.class
-com\library\view\components\StyledButton$1.class
 com\library\view\ReportPanel.class
 com\library\view\CustomerPurchasePanel$1.class
 com\library\view\LoginView$3.class

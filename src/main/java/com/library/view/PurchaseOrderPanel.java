@@ -33,6 +33,11 @@ public class PurchaseOrderPanel extends JPanel {
     private StyledTable table;
     private DefaultTableModel tableModel;
 
+    /** Các nút phụ thuộc trạng thái đơn mua */
+    private StyledButton approveBtn;
+    private StyledButton receiveBtn;
+    private StyledButton bulkReceiveBtn;
+
     /** Column index for checkbox */
     private static final int COL_CHECK = 0;
 
@@ -63,14 +68,17 @@ public class PurchaseOrderPanel extends JPanel {
 
         if (AuthController.getInstance().isAdmin()) {
             // Single approve
-            StyledButton approveBtn = new StyledButton("Duyệt");
+            approveBtn = new StyledButton("Duyệt");
             approveBtn.setIcon(Icons.button("check"));
             approveBtn.setColors(AppConstants.ACCENT, AppConstants.ACCENT_DARK);
             approveBtn.addActionListener(e -> changeStatus("approve"));
+            approveBtn.setEnabled(false);
 
-            StyledButton receiveBtn = StyledButton.success("Nhận hàng");
+            receiveBtn = StyledButton.success("Nhận hàng");
             receiveBtn.setIcon(Icons.button("inbox"));
             receiveBtn.addActionListener(e -> changeStatus("receive"));
+            receiveBtn.setEnabled(false);
+            receiveBtn.setToolTipText("Chỉ dùng được sau khi đơn đã được Duyệt");
 
             StyledButton cancelBtn = StyledButton.danger("Hủy đơn");
             cancelBtn.setIcon(Icons.button("x"));
@@ -82,10 +90,12 @@ public class PurchaseOrderPanel extends JPanel {
             bulkApproveBtn.setColors(new Color(6, 182, 212), new Color(8, 145, 178));
             bulkApproveBtn.addActionListener(e -> bulkAction("approve"));
 
-            StyledButton bulkReceiveBtn = new StyledButton("Nhận đã chọn");
+            bulkReceiveBtn = new StyledButton("Nhận đã chọn");
             bulkReceiveBtn.setIcon(Icons.button("inbox"));
             bulkReceiveBtn.setColors(new Color(34, 197, 94), new Color(22, 163, 74));
             bulkReceiveBtn.addActionListener(e -> bulkAction("receive"));
+            bulkReceiveBtn.setEnabled(false);
+            bulkReceiveBtn.setToolTipText("Chỉ dùng được khi các đơn chọn đều đã Duyệt");
 
             buttons.add(approveBtn);
             buttons.add(receiveBtn);
@@ -129,6 +139,13 @@ public class PurchaseOrderPanel extends JPanel {
         };
         table = new StyledTable(tableModel);
         table.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+
+        // Lắng nghe thay đổi dòng chọn → cập nhật trạng thái nút
+        table.getSelectionModel().addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) {
+                updateActionButtonStates();
+            }
+        });
 
         // Checkbox column
         table.getColumnModel().getColumn(COL_CHECK).setPreferredWidth(35);
@@ -174,6 +191,14 @@ public class PurchaseOrderPanel extends JPanel {
     }
 
     private void loadData() {
+        loadData(-1);
+    }
+
+    /**
+     * Load dữ liệu và tự động chọn lại đơn có ID = selectedId (nếu >= 0).
+     * Giúp giữ highlight sau các thao tác Duyệt / Nhận hàng.
+     */
+    private void loadData(int selectedId) {
         List<PurchaseOrder> orders = orderController.getAllOrders();
         tableModel.setRowCount(0);
         for (PurchaseOrder po : orders) {
@@ -189,6 +214,54 @@ public class PurchaseOrderPanel extends JPanel {
                     po.getCreatedByName()
             });
         }
+
+        // Khôi phục selection được lưu trước đó
+        if (selectedId >= 0) {
+            for (int i = 0; i < tableModel.getRowCount(); i++) {
+                if (tableModel.getValueAt(i, 1) instanceof Integer rowId && rowId == selectedId) {
+                    table.setRowSelectionInterval(i, i);
+                    table.scrollRectToVisible(table.getCellRect(i, 0, true));
+                    break;
+                }
+            }
+        } else {
+            table.clearSelection();
+        }
+        updateActionButtonStates();
+    }
+
+    /**
+     * Cập nhật trạng thái (enabled/disabled) các nút Duyệt & Nhận hàng
+     * dựa trên trạng thái của đơn mua đang được chọn.
+     */
+    private void updateActionButtonStates() {
+        if (approveBtn == null || receiveBtn == null || bulkReceiveBtn == null) return;
+
+        int row = table.getSelectedRow();
+        if (row < 0) {
+            // Không có dòng nào được chọn
+            approveBtn.setEnabled(false);
+            receiveBtn.setEnabled(false);
+        } else {
+            String status = (String) tableModel.getValueAt(row, 7);
+            approveBtn.setEnabled("DRAFT".equals(status));
+            receiveBtn.setEnabled("APPROVED".equals(status));
+        }
+
+        // Nút "Nhận đã chọn": chỉ enable khi TẤT CẢ các đơn được tick đều là APPROVED
+        boolean anyChecked = false;
+        boolean allCheckedAreApproved = true;
+        for (int i = 0; i < tableModel.getRowCount(); i++) {
+            if (Boolean.TRUE.equals(tableModel.getValueAt(i, COL_CHECK))) {
+                anyChecked = true;
+                String s = (String) tableModel.getValueAt(i, 7);
+                if (!"APPROVED".equals(s)) {
+                    allCheckedAreApproved = false;
+                    break;
+                }
+            }
+        }
+        bulkReceiveBtn.setEnabled(anyChecked && allCheckedAreApproved);
     }
 
     /** Thay đổi trạng thái 1 đơn (chọn bằng row) */
@@ -223,7 +296,8 @@ public class PurchaseOrderPanel extends JPanel {
             if (error != null) {
                 UiFactory.showError(this, error);
             } else {
-                loadData();
+                // Giữ highlight đơn hàng sau khi thực hiện thao tác
+                loadData(id);
                 UiFactory.showInfo(this, "Thao tác thành công!");
             }
         }
@@ -529,27 +603,39 @@ public class PurchaseOrderPanel extends JPanel {
         // Bottom buttons
         StyledButton saveBtn = StyledButton.success("Tạo đơn");
         saveBtn.setIcon(Icons.button("save"));
+
+        // Nút 1-click: Tạo & Nhận hàng ngay lập tức (bao gồm Duyệt + Nhận hàng)
+        StyledButton saveAndReceiveBtn = new StyledButton("Tạo & Nhận hàng");
+        saveAndReceiveBtn.setIcon(Icons.button("inbox"));
+        saveAndReceiveBtn.setColors(new Color(124, 58, 237), new Color(91, 33, 182));
+        saveAndReceiveBtn.setToolTipText("Tạo đơn, duyệt và nhận hàng cùng lúc - 1 click");
+
         StyledButton cancelBtn = UiFactory.secondaryButton("Hủy");
 
-        saveBtn.addActionListener(e -> {
+        // Hàm build order dùng chung
+        java.util.function.Supplier<PurchaseOrder> buildOrder = () -> {
             Supplier selectedSupplier = (Supplier) supplierCombo.getSelectedItem();
             Budget selectedBudget = (Budget) budgetCombo.getSelectedItem();
             if (selectedSupplier == null || selectedBudget == null) {
                 UiFactory.showError(dialog, "Vui lòng chọn nhà cung cấp và ngân sách!");
-                return;
+                return null;
             }
             if (orderItems.isEmpty()) {
                 UiFactory.showError(dialog, "Vui lòng thêm ít nhất 1 tài liệu!");
-                return;
+                return null;
             }
-
             PurchaseOrder order = new PurchaseOrder();
             order.setSupplierId(selectedSupplier.getId());
             order.setBudgetId(selectedBudget.getId());
             order.setItems(new ArrayList<>(orderItems));
             order.setNotes(notesField.getText().trim());
             order.setCreatedBy(AuthController.getInstance().getCurrentUser().getId());
+            return order;
+        };
 
+        saveBtn.addActionListener(e -> {
+            PurchaseOrder order = buildOrder.get();
+            if (order == null) return;
             String error = orderController.createOrder(order);
             if (error != null) {
                 UiFactory.showError(dialog, error);
@@ -559,6 +645,38 @@ public class PurchaseOrderPanel extends JPanel {
                 UiFactory.showInfo(this, "Tạo đơn mua thành công!\nMã đơn: " + order.getOrderCode());
             }
         });
+
+        saveAndReceiveBtn.addActionListener(e -> {
+            PurchaseOrder order = buildOrder.get();
+            if (order == null) return;
+            // Bước 1: Tạo đơn (DRAFT)
+            String createError = orderController.createOrder(order);
+            if (createError != null) {
+                UiFactory.showError(dialog, createError);
+                return;
+            }
+            // Bước 2: Duyệt (DRAFT → APPROVED)
+            String approveError = orderController.approveOrder(order.getId());
+            if (approveError != null) {
+                UiFactory.showError(dialog, "Tạo đơn thành công nhưng không thể duyệt:\n" + approveError);
+                dialog.dispose();
+                loadData();
+                return;
+            }
+            // Bước 3: Nhận hàng (APPROVED → RECEIVED)
+            showInvoiceDialog(order.getId(), order.getOrderCode());
+            String receiveError = orderController.receiveOrder(order.getId());
+            if (receiveError != null) {
+                UiFactory.showError(dialog, "Đã duyệt nhưng không thể nhận hàng:\n" + receiveError);
+                dialog.dispose();
+                loadData();
+                return;
+            }
+            dialog.dispose();
+            loadData();
+            UiFactory.showInfo(this, "✅ Hoàn tất! Đã tạo, duyệt và nhận hàng thành công!\nMã đơn: " + order.getOrderCode());
+        });
+
         cancelBtn.addActionListener(e -> dialog.dispose());
 
         // Assemble
@@ -570,7 +688,7 @@ public class PurchaseOrderPanel extends JPanel {
 
         content.add(topWrapper, BorderLayout.NORTH);
         content.add(itemTable.wrapInScrollPane(), BorderLayout.CENTER);
-        content.add(UiFactory.dialogButtons(cancelBtn, saveBtn), BorderLayout.SOUTH);
+        content.add(UiFactory.dialogButtons(cancelBtn, saveBtn, saveAndReceiveBtn), BorderLayout.SOUTH);
 
         dialog.setContentPane(content);
         dialog.setVisible(true);
