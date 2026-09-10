@@ -11,7 +11,6 @@ public class AIServiceTest {
     @Test
     public void testAIConfig() {
         assertNotNull(AIConfig.getApiKey());
-        assertEquals("sk_M24YFwUSGkpRTmWuyTbe6CfKPhqNpHNGQqjIPzjcDJo", AIConfig.getApiKey());
         assertNotNull(AIConfig.getBaseUrl());
     }
 
