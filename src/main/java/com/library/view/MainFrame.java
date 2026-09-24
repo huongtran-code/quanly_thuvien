@@ -64,11 +64,15 @@ public class MainFrame extends JFrame {
 
         // Add items to sidebar and content
         addSidebarItem("Tài liệu", "document", documentPanel, "Quản lý tài liệu và danh mục", true);
-        addSidebarItem("Nhà cung cấp", "building", new SupplierPanel(), "Quản lý nhà cung cấp", false);
-        addSidebarItem("Ngân sách", "wallet", new BudgetPanel(), "Quản lý ngân sách mua sắm", false);
-        addSidebarItem("Đơn mua", "package", new PurchaseOrderPanel(), "Quản lý đơn mua hàng", false);
+        if (AuthController.getInstance().isAdmin()) {
+            addSidebarItem("Nhà cung cấp", "building", new SupplierPanel(), "Quản lý nhà cung cấp", false);
+            addSidebarItem("Ngân sách", "wallet", new BudgetPanel(), "Quản lý ngân sách mua sắm", false);
+            addSidebarItem("Đơn mua", "package", new PurchaseOrderPanel(), "Quản lý đơn mua hàng", false);
+        }
         addSidebarItem("Đề xuất mua", "edit", new SuggestionPanel(), "Đề xuất mua sách từ GV/SV", false);
-        addSidebarItem("Báo cáo", "chart", new ReportPanel(), "Báo cáo thống kê chi tiêu", false);
+        if (AuthController.getInstance().isAdmin()) {
+            addSidebarItem("Báo cáo", "chart", new ReportPanel(), "Báo cáo thống kê chi tiêu", false);
+        }
         addSidebarItem("Sách đã mua", "inbox", customerPanel, "Danh sách sách đã xuất kho cho khách", false);
         addSidebarItem("Quét mã", "scan", scannerPanel, "Kết nối điện thoại quét mã vạch", false);
         addSidebarItem("Trợ lý AI", "bot", new AIAssistantPanel(), "Trợ lý AI tư vấn nghiệp vụ", false);
