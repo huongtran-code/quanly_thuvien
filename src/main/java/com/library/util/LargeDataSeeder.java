@@ -95,6 +95,16 @@ public class LargeDataSeeder {
             seedPurchaseSuggestions(conn, adminId, 1000);
             System.out.println("✓ Da sinh 1.000 bản ghi De xuat mua sach (purchase_suggestions)");
 
+            // 8. Sinh dữ liệu khách hàng, mượn sách, và phạt
+            List<Integer> customerIds = seedCustomers(conn, 100);
+            System.out.println("✓ Da sinh 100 bản ghi Khach hang (customers)");
+            
+            List<Integer> borrowIds = seedBorrows(conn, customerIds, documentIds, 200);
+            System.out.println("✓ Da sinh 200 bản ghi Muon sach (borrows)");
+            
+            seedFines(conn, customerIds, borrowIds, 50);
+            System.out.println("✓ Da sinh 50 bản ghi Phat (fines)");
+
             conn.commit(); // Commit toàn bộ dữ liệu
             conn.setAutoCommit(true);
 
@@ -324,5 +334,116 @@ public class LargeDataSeeder {
         int hour = random.nextInt(12) + 8; // 8am to 8pm
         int min = random.nextInt(60);
         return LocalDateTime.of(year, month, day, hour, min);
+    }
+
+    private static List<Integer> seedCustomers(Connection conn, int count) throws Exception {
+        List<Integer> ids = new ArrayList<>();
+        String sql = "INSERT INTO customers (full_name, email, phone, address, status, total_borrowed, total_purchases, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+        
+        try (PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            for (int i = 1; i <= count; i++) {
+                String name = PERSON_NAMES[random.nextInt(PERSON_NAMES.length)] + " " + i;
+                ps.setString(1, name);
+                ps.setString(2, "customer" + i + "@example.com");
+                ps.setString(3, "09" + String.format("%08d", random.nextInt(100000000)));
+                ps.setString(4, "Địa chỉ " + i + ", Hà Nội");
+                ps.setString(5, "ACTIVE");
+                ps.setInt(6, random.nextInt(10));
+                ps.setInt(7, random.nextInt(5));
+                ps.setObject(8, randomDateTime(2021, 2025));
+                ps.addBatch();
+            }
+            ps.executeBatch();
+            ResultSet rs = ps.getGeneratedKeys();
+            while (rs.next()) {
+                ids.add(rs.getInt(1));
+            }
+        }
+        return ids;
+    }
+
+    private static List<Integer> seedBorrows(Connection conn, List<Integer> customerIds, List<Integer> documentIds, int count) throws Exception {
+        List<Integer> ids = new ArrayList<>();
+        String sql = "INSERT INTO borrows (borrow_code, customer_id, borrow_date, due_date, return_date, status, total_books, late_fee, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        
+        try (PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            for (int i = 1; i <= count; i++) {
+                LocalDateTime borrowDate = randomDateTime(2023, 2025);
+                LocalDateTime dueDate = borrowDate.plusDays(14);
+                boolean isReturned = random.nextBoolean();
+                LocalDateTime returnDate = isReturned ? borrowDate.plusDays(random.nextInt(20)) : null;
+                String status = isReturned ? "RETURNED" : (LocalDateTime.now().isAfter(dueDate) ? "OVERDUE" : "BORROWED");
+                double lateFee = status.equals("OVERDUE") ? random.nextInt(10) * 5000.0 : 0;
+                
+                ps.setString(1, "BRW" + String.format("%06d", i));
+                ps.setInt(2, customerIds.get(random.nextInt(customerIds.size())));
+                ps.setObject(3, borrowDate);
+                ps.setObject(4, dueDate);
+                ps.setObject(5, returnDate);
+                ps.setString(6, status);
+                ps.setInt(7, random.nextInt(5) + 1);
+                ps.setDouble(8, lateFee);
+                ps.setObject(9, borrowDate);
+                ps.addBatch();
+            }
+            ps.executeBatch();
+            ResultSet rs = ps.getGeneratedKeys();
+            while (rs.next()) {
+                ids.add(rs.getInt(1));
+            }
+        }
+        return ids;
+    }
+
+    private static void seedFines(Connection conn, List<Integer> customerIds, List<Integer> borrowIds, int count) throws Exception {
+        String sql = "INSERT INTO fines (customer_id, borrow_id, fine_type, amount, reason, status, paid_date, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+        
+        String[] fineTypes = {"LATE_RETURN", "DAMAGED", "LOST"};
+        String[] statuses = {"UNPAID", "PAID", "WAIVED"};
+        String[] reasons = {
+            "Trả sách trễ hạn 5 ngày",
+            "Sách bị rách trang",
+            "Sách bị mất bìa",
+            "Trả sách trễ hạn 10 ngày",
+            "Sách bị ướt nước",
+            "Mất sách không tìm thấy",
+            "Trả sách trễ 2 tuần"
+        };
+        
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            for (int i = 1; i <= count; i++) {
+                String fineType = fineTypes[random.nextInt(fineTypes.length)];
+                String status = statuses[random.nextInt(statuses.length)];
+                double amount;
+                
+                switch (fineType) {
+                    case "LATE_RETURN":
+                        amount = (random.nextInt(10) + 1) * 5000.0; // 5k-50k
+                        break;
+                    case "DAMAGED":
+                        amount = (random.nextInt(10) + 5) * 10000.0; // 50k-150k
+                        break;
+                    case "LOST":
+                        amount = (random.nextInt(20) + 10) * 10000.0; // 100k-300k
+                        break;
+                    default:
+                        amount = 50000.0;
+                }
+                
+                LocalDateTime createdAt = randomDateTime(2023, 2025);
+                LocalDateTime paidDate = status.equals("PAID") ? createdAt.plusDays(random.nextInt(30)) : null;
+                
+                ps.setInt(1, customerIds.get(random.nextInt(customerIds.size())));
+                ps.setInt(2, borrowIds.get(random.nextInt(borrowIds.size())));
+                ps.setString(3, fineType);
+                ps.setDouble(4, amount);
+                ps.setString(5, reasons[random.nextInt(reasons.length)]);
+                ps.setString(6, status);
+                ps.setObject(7, paidDate);
+                ps.setObject(8, createdAt);
+                ps.addBatch();
+            }
+            ps.executeBatch();
+        }
     }
 }
