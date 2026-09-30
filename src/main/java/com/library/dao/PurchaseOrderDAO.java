@@ -185,13 +185,25 @@ public class PurchaseOrderDAO {
     private String generateOrderCode(Connection conn) throws SQLException {
         String today = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
         String prefix = "PO-" + today + "-";
-        String sql = "SELECT COUNT(*) FROM purchase_orders WHERE order_code LIKE ?";
-        PreparedStatement stmt = conn.prepareStatement(sql);
-        stmt.setString(1, prefix + "%");
-        ResultSet rs = stmt.executeQuery();
-        int count = 0;
-        if (rs.next()) count = rs.getInt(1);
-        return prefix + String.format("%03d", count + 1);
+        String sql = "SELECT order_code FROM purchase_orders WHERE order_code LIKE ?";
+        
+        int maxNumber = 0;
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, prefix + "%");
+            ResultSet rs = stmt.executeQuery();
+            while (rs.next()) {
+                String code = rs.getString("order_code");
+                if (code != null && code.length() >= prefix.length()) {
+                    try {
+                        int number = Integer.parseInt(code.substring(prefix.length()));
+                        if (number > maxNumber) {
+                            maxNumber = number;
+                        }
+                    } catch (NumberFormatException ignored) {}
+                }
+            }
+        }
+        return prefix + String.format("%03d", maxNumber + 1);
     }
 
     // ── Thống kê cho Báo cáo ──

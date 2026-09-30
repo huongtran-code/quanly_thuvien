@@ -4,9 +4,6 @@ import com.library.dao.UserDAO;
 import com.library.model.User;
 import com.library.util.PasswordUtil;
 
-/**
- * Controller: Xác thực và quản lý phiên đăng nhập
- */
 public class AuthController {
 
     private static AuthController instance;
@@ -22,46 +19,62 @@ public class AuthController {
         return instance;
     }
 
-    /**
-     * Đăng nhập
-     * @return User nếu thành công, null nếu thất bại
-     */
     public User login(String username, String password) {
         if (username == null || username.isBlank() || password == null || password.isBlank()) {
             return null;
         }
+        
         User user = userDAO.findByUsername(username.trim());
-        if (user != null && PasswordUtil.verify(password, user.getPasswordHash())) {
+        if (user == null) {
+            return null;
+        }
+        
+        // Check if account is locked or inactive
+        if ("LOCKED".equals(user.getStatus())) {
+            return null;
+        }
+        if ("INACTIVE".equals(user.getStatus())) {
+            return null;
+        }
+        
+        // Verify password
+        if (PasswordUtil.verify(password, user.getPasswordHash())) {
+            // Update last login
+            userDAO.updateLastLogin(user.getId());
+            
+            // Log activity
+            userDAO.logActivity(user.getId(), "LOGIN", null, null, "Đăng nhập thành công");
+            
             this.currentUser = user;
             return user;
+        } else {
+            // Increment failed login attempts
+            userDAO.incrementFailedLoginAttempts(user.getId());
+            
+            // Lock account if too many failed attempts
+            if (user.getFailedLoginAttempts() >= 4) { // Lock after 5 failed attempts
+                userDAO.lockAccount(user.getId(), "Khóa tự động do đăng nhập sai quá 5 lần");
+            }
+            
+            return null;
         }
-        return null;
     }
 
-    /**
-     * Đăng xuất
-     */
     public void logout() {
+        if (currentUser != null) {
+            userDAO.logActivity(currentUser.getId(), "LOGOUT", null, null, "Đăng xuất");
+        }
         this.currentUser = null;
     }
 
-    /**
-     * Lấy user đang đăng nhập
-     */
     public User getCurrentUser() {
         return currentUser;
     }
 
-    /**
-     * Kiểm tra đã đăng nhập chưa
-     */
     public boolean isLoggedIn() {
         return currentUser != null;
     }
 
-    /**
-     * Kiểm tra có phải admin không
-     */
     public boolean isAdmin() {
         return currentUser != null && currentUser.isAdmin();
     }

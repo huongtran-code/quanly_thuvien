@@ -25,7 +25,7 @@ public class ReportPanel extends JPanel {
     private JSpinner yearSpinner;
     private JPanel chartPanel;
     private JPanel statsPanel;
-    private String currentChart = "monthly"; // monthly, supplier, category
+    private String currentChart = "monthly"; // monthly, supplier, category, customers, borrows, sales, fines
 
     public ReportPanel() {
         setLayout(new BorderLayout(0, 10));
@@ -46,9 +46,10 @@ public class ReportPanel extends JPanel {
         yearSpinner.setEditor(new JSpinner.NumberEditor(yearSpinner, "#"));
         yearSpinner.addChangeListener(e -> loadReport());
 
-        StyledButton monthlyBtn = new StyledButton("Theo tháng");
+        // Back-office reports
+        StyledButton monthlyBtn = new StyledButton("Chi tiêu tháng");
         monthlyBtn.setIcon(Icons.button("calendar"));
-        monthlyBtn.setPreferredSize(new Dimension(130, 30));
+        monthlyBtn.setPreferredSize(new Dimension(140, 30));
         monthlyBtn.addActionListener(e -> { currentChart = "monthly"; loadReport(); });
 
         StyledButton supplierBtn = StyledButton.success("Theo NCC");
@@ -61,6 +62,27 @@ public class ReportPanel extends JPanel {
         categoryBtn.setPreferredSize(new Dimension(150, 30));
         categoryBtn.addActionListener(e -> { currentChart = "category"; loadReport(); });
 
+        // Front-office reports
+        StyledButton customersBtn = new StyledButton("Khách hàng", new Color(139, 92, 246), new Color(124, 58, 237));
+        customersBtn.setIcon(Icons.button("users"));
+        customersBtn.setPreferredSize(new Dimension(140, 30));
+        customersBtn.addActionListener(e -> { currentChart = "customers"; loadReport(); });
+
+        StyledButton borrowsBtn = new StyledButton("Mượn sách", new Color(236, 72, 153), new Color(219, 39, 119));
+        borrowsBtn.setIcon(Icons.button("book-open"));
+        borrowsBtn.setPreferredSize(new Dimension(130, 30));
+        borrowsBtn.addActionListener(e -> { currentChart = "borrows"; loadReport(); });
+
+        StyledButton salesBtn = new StyledButton("Doanh thu", new Color(34, 197, 94), new Color(22, 163, 74));
+        salesBtn.setIcon(Icons.button("shopping-cart"));
+        salesBtn.setPreferredSize(new Dimension(130, 30));
+        salesBtn.addActionListener(e -> { currentChart = "sales"; loadReport(); });
+
+        StyledButton finesBtn = new StyledButton("Phạt", new Color(249, 115, 22), new Color(234, 88, 12));
+        finesBtn.setIcon(Icons.button("alert-circle"));
+        finesBtn.setPreferredSize(new Dimension(100, 30));
+        finesBtn.addActionListener(e -> { currentChart = "fines"; loadReport(); });
+
         StyledButton aiBtn = new StyledButton("✨ AI Phân tích", AppConstants.PRIMARY, AppConstants.PRIMARY_DARK);
         aiBtn.setPreferredSize(new Dimension(135, 30));
         aiBtn.addActionListener(e -> showAIAnalysisDialog((int) yearSpinner.getValue()));
@@ -70,9 +92,23 @@ public class ReportPanel extends JPanel {
         refreshBtn.setPreferredSize(new Dimension(115, 30));
         refreshBtn.addActionListener(e -> loadReport());
 
-        return UiFactory.toolbar("Báo cáo Thống kê", Icons.title("chart"),
+        JPanel toolbar1 = UiFactory.toolbar("Báo cáo Thống kê", Icons.title("chart"),
                 UiFactory.fieldLabel("Năm:"), yearSpinner,
-                monthlyBtn, supplierBtn, categoryBtn, aiBtn, refreshBtn);
+                monthlyBtn, supplierBtn, categoryBtn);
+        
+        JPanel toolbar2 = UiFactory.toolbar("",
+                customersBtn, borrowsBtn, salesBtn, finesBtn,
+                (JComponent) Box.createHorizontalStrut(20),
+                aiBtn, refreshBtn);
+        
+        JPanel combined = new JPanel();
+        combined.setLayout(new BoxLayout(combined, BoxLayout.Y_AXIS));
+        combined.setBackground(AppConstants.BG_DARK);
+        combined.add(toolbar1);
+        combined.add(Box.createVerticalStrut(5));
+        combined.add(toolbar2);
+        
+        return combined;
     }
 
     private JPanel createMainContent() {
@@ -106,14 +142,20 @@ public class ReportPanel extends JPanel {
             case "monthly" -> chartPanel.add(createMonthlyChart(year), BorderLayout.CENTER);
             case "supplier" -> chartPanel.add(createBarChart(controller.getSpendingBySupplier(year), "Chi tiêu theo Nhà cung cấp - " + year), BorderLayout.CENTER);
             case "category" -> chartPanel.add(createBarChart(controller.getSpendingByCategory(year), "Chi tiêu theo Danh mục - " + year), BorderLayout.CENTER);
+            case "customers" -> chartPanel.add(createCustomerStatsPanel(), BorderLayout.CENTER);
+            case "borrows" -> chartPanel.add(createBorrowStatsPanel(), BorderLayout.CENTER);
+            case "sales" -> chartPanel.add(createSalesChart(year), BorderLayout.CENTER);
+            case "fines" -> chartPanel.add(createFineStatsPanel(year), BorderLayout.CENTER);
         }
         chartPanel.revalidate();
         chartPanel.repaint();
 
         // Update stats
         statsPanel.removeAll();
-        statsPanel.add(createOrderStatusPanel(), BorderLayout.WEST);
-        statsPanel.add(createBudgetSummaryTable(), BorderLayout.CENTER);
+        if (currentChart.equals("monthly") || currentChart.equals("supplier") || currentChart.equals("category")) {
+            statsPanel.add(createOrderStatusPanel(), BorderLayout.WEST);
+            statsPanel.add(createBudgetSummaryTable(), BorderLayout.CENTER);
+        }
         statsPanel.revalidate();
         statsPanel.repaint();
     }
@@ -558,6 +600,311 @@ public class ReportPanel extends JPanel {
         worker.execute();
 
         dialog.setVisible(true);
+    }
+    
+    // ==================== FRONT-OFFICE REPORT PANELS ====================
+    
+    /**
+     * Panel thống kê khách hàng
+     */
+    private JPanel createCustomerStatsPanel() {
+        Map<String, Integer> statusCounts = controller.getCustomerCountByStatus();
+        
+        JPanel panel = new JPanel();
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        panel.setBackground(AppConstants.BG_CARD);
+        panel.setBorder(BorderFactory.createEmptyBorder(40, 40, 40, 40));
+        
+        // Title
+        JLabel title = new JLabel("Thống Kê Khách Hàng");
+        title.setFont(new Font(AppConstants.FONT_FAMILY, Font.BOLD, 24));
+        title.setForeground(AppConstants.TEXT_PRIMARY);
+        title.setAlignmentX(Component.CENTER_ALIGNMENT);
+        panel.add(title);
+        panel.add(Box.createVerticalStrut(30));
+        
+        // Stats cards
+        JPanel cardsPanel = new JPanel(new GridLayout(1, 3, 20, 0));
+        cardsPanel.setOpaque(false);
+        cardsPanel.setMaximumSize(new Dimension(800, 150));
+        
+        cardsPanel.add(createStatCard("Hoạt động", statusCounts.getOrDefault("ACTIVE", 0), 
+                                     AppConstants.ACCENT, "users"));
+        cardsPanel.add(createStatCard("Tạm ngưng", statusCounts.getOrDefault("SUSPENDED", 0), 
+                                     AppConstants.WARNING, "alert-circle"));
+        cardsPanel.add(createStatCard("Không hoạt động", statusCounts.getOrDefault("INACTIVE", 0), 
+                                     AppConstants.TEXT_MUTED, "user-x"));
+        
+        panel.add(cardsPanel);
+        panel.add(Box.createVerticalStrut(20));
+        
+        int total = statusCounts.values().stream().mapToInt(Integer::intValue).sum();
+        JLabel totalLabel = new JLabel("Tổng cộng: " + total + " khách hàng");
+        totalLabel.setFont(AppConstants.FONT_HEADING);
+        totalLabel.setForeground(AppConstants.TEXT_SECONDARY);
+        totalLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        panel.add(totalLabel);
+        
+        return panel;
+    }
+    
+    /**
+     * Panel thống kê mượn sách
+     */
+    private JPanel createBorrowStatsPanel() {
+        Map<String, Integer> statusCounts = controller.getBorrowCountByStatus();
+        
+        JPanel panel = new JPanel();
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        panel.setBackground(AppConstants.BG_CARD);
+        panel.setBorder(BorderFactory.createEmptyBorder(40, 40, 40, 40));
+        
+        // Title
+        JLabel title = new JLabel("Thống Kê Mượn/Trả Sách");
+        title.setFont(new Font(AppConstants.FONT_FAMILY, Font.BOLD, 24));
+        title.setForeground(AppConstants.TEXT_PRIMARY);
+        title.setAlignmentX(Component.CENTER_ALIGNMENT);
+        panel.add(title);
+        panel.add(Box.createVerticalStrut(30));
+        
+        // Stats cards
+        JPanel cardsPanel = new JPanel(new GridLayout(1, 3, 20, 0));
+        cardsPanel.setOpaque(false);
+        cardsPanel.setMaximumSize(new Dimension(800, 150));
+        
+        cardsPanel.add(createStatCard("Đang mượn", statusCounts.getOrDefault("BORROWED", 0), 
+                                     AppConstants.PRIMARY, "book-open"));
+        cardsPanel.add(createStatCard("Đã trả", statusCounts.getOrDefault("RETURNED", 0), 
+                                     AppConstants.ACCENT, "check-circle"));
+        cardsPanel.add(createStatCard("Quá hạn", statusCounts.getOrDefault("OVERDUE", 0), 
+                                     AppConstants.DANGER, "alert-triangle"));
+        
+        panel.add(cardsPanel);
+        panel.add(Box.createVerticalStrut(20));
+        
+        int total = statusCounts.values().stream().mapToInt(Integer::intValue).sum();
+        JLabel totalLabel = new JLabel("Tổng cộng: " + total + " phiếu mượn");
+        totalLabel.setFont(AppConstants.FONT_HEADING);
+        totalLabel.setForeground(AppConstants.TEXT_SECONDARY);
+        totalLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        panel.add(totalLabel);
+        
+        return panel;
+    }
+    
+    /**
+     * Biểu đồ doanh thu bán sách theo tháng
+     */
+    private JPanel createSalesChart(int year) {
+        Map<Integer, Double> data = controller.getMonthlySalesRevenue(year);
+        
+        return new JPanel() {
+            {
+                setOpaque(false);
+            }
+
+            @Override
+            protected void paintComponent(Graphics g) {
+                super.paintComponent(g);
+                Graphics2D g2 = (Graphics2D) g;
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+                int w = getWidth();
+                int h = getHeight();
+                int padding = 60;
+                int chartW = w - padding * 2;
+                int chartH = h - padding * 2;
+
+                // Title
+                g2.setFont(AppConstants.FONT_HEADING);
+                g2.setColor(AppConstants.TEXT_PRIMARY);
+                String titleText = "Doanh Thu Bán Sách - " + year;
+                FontMetrics fm = g2.getFontMetrics();
+                g2.drawString(titleText, (w - fm.stringWidth(titleText)) / 2, 25);
+
+                // Find max value
+                double maxVal = data.values().stream().mapToDouble(Double::doubleValue).max().orElse(1);
+                if (maxVal <= 0) maxVal = 1;
+
+                // Draw axes
+                g2.setColor(AppConstants.BORDER);
+                g2.setStroke(new BasicStroke(1));
+                g2.drawLine(padding, padding, padding, h - padding);
+                g2.drawLine(padding, h - padding, w - padding, h - padding);
+
+                // Draw bars
+                int barWidth = chartW / 14;
+                String[] months = {"T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8", "T9", "T10", "T11", "T12"};
+
+                for (int i = 0; i < 12; i++) {
+                    double value = data.getOrDefault(i + 1, 0.0);
+                    int barH = (int) ((value / maxVal) * (chartH - 20));
+                    int x = padding + (i + 1) * (chartW / 13) - barWidth / 2;
+                    int y = h - padding - barH;
+
+                    // Gradient bar (green for sales)
+                    if (value > 0) {
+                        GradientPaint gp = new GradientPaint(x, y, new Color(34, 197, 94),
+                                x, h - padding, new Color(22, 163, 74));
+                        g2.setPaint(gp);
+                        g2.fill(new RoundRectangle2D.Float(x, y, barWidth, barH, 4, 4));
+
+                        // Value on top
+                        g2.setColor(AppConstants.TEXT_PRIMARY);
+                        g2.setFont(AppConstants.FONT_SMALL);
+                        String valStr = CurrencyUtil.formatNumber(value);
+                        FontMetrics fm2 = g2.getFontMetrics();
+                        g2.drawString(valStr, x + (barWidth - fm2.stringWidth(valStr)) / 2, y - 5);
+                    }
+
+                    // Month label
+                    g2.setColor(AppConstants.TEXT_SECONDARY);
+                    g2.setFont(AppConstants.FONT_SMALL);
+                    FontMetrics fm3 = g2.getFontMetrics();
+                    g2.drawString(months[i], x + (barWidth - fm3.stringWidth(months[i])) / 2, h - padding + 16);
+                }
+
+                // Y-axis labels
+                g2.setColor(AppConstants.TEXT_MUTED);
+                g2.setFont(AppConstants.FONT_SMALL);
+                for (int i = 0; i <= 4; i++) {
+                    double val = maxVal * i / 4;
+                    int y = h - padding - (int) ((val / maxVal) * (chartH - 20));
+                    String label = CurrencyUtil.formatNumber(val);
+                    g2.drawString(label, 5, y + 4);
+                    // Grid line
+                    g2.setColor(new Color(71, 85, 105, 50));
+                    g2.drawLine(padding + 1, y, w - padding, y);
+                    g2.setColor(AppConstants.TEXT_MUTED);
+                }
+
+                // Total revenue
+                double total = controller.getTotalSalesRevenue(year);
+                g2.setFont(AppConstants.FONT_HEADING);
+                g2.setColor(new Color(34, 197, 94));
+                String totalStr = "Tổng: " + CurrencyUtil.format(total);
+                g2.drawString(totalStr, w - padding - g2.getFontMetrics().stringWidth(totalStr), 25);
+
+                // No data message
+                if (data.isEmpty()) {
+                    g2.setFont(AppConstants.FONT_BODY);
+                    g2.setColor(AppConstants.TEXT_MUTED);
+                    String msg = "Chưa có dữ liệu bán sách cho năm " + year;
+                    g2.drawString(msg, (w - g2.getFontMetrics().stringWidth(msg)) / 2, h / 2);
+                }
+            }
+        };
+    }
+    
+    /**
+     * Panel thống kê phạt
+     */
+    private JPanel createFineStatsPanel(int year) {
+        Map<String, Integer> statusCounts = controller.getFineCountByStatus();
+        double unpaid = controller.getTotalUnpaidFines();
+        double paid = controller.getTotalPaidFines(year);
+        
+        JPanel panel = new JPanel();
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        panel.setBackground(AppConstants.BG_CARD);
+        panel.setBorder(BorderFactory.createEmptyBorder(40, 40, 40, 40));
+        
+        // Title
+        JLabel title = new JLabel("Thống Kê Phạt - " + year);
+        title.setFont(new Font(AppConstants.FONT_FAMILY, Font.BOLD, 24));
+        title.setForeground(AppConstants.TEXT_PRIMARY);
+        title.setAlignmentX(Component.CENTER_ALIGNMENT);
+        panel.add(title);
+        panel.add(Box.createVerticalStrut(30));
+        
+        // Stats cards
+        JPanel cardsPanel = new JPanel(new GridLayout(1, 3, 20, 0));
+        cardsPanel.setOpaque(false);
+        cardsPanel.setMaximumSize(new Dimension(800, 150));
+        
+        cardsPanel.add(createStatCard("Chưa thanh toán", statusCounts.getOrDefault("UNPAID", 0), 
+                                     AppConstants.DANGER, "alert-circle"));
+        cardsPanel.add(createStatCard("Đã thanh toán", statusCounts.getOrDefault("PAID", 0), 
+                                     AppConstants.ACCENT, "check-circle"));
+        cardsPanel.add(createStatCard("Miễn phạt", statusCounts.getOrDefault("WAIVED", 0), 
+                                     AppConstants.WARNING, "x-circle"));
+        
+        panel.add(cardsPanel);
+        panel.add(Box.createVerticalStrut(30));
+        
+        // Financial summary
+        JPanel financePanel = new JPanel(new GridLayout(1, 2, 40, 0));
+        financePanel.setOpaque(false);
+        financePanel.setMaximumSize(new Dimension(600, 100));
+        
+        JPanel unpaidPanel = createFinanceCard("Nợ phạt", unpaid, AppConstants.DANGER);
+        JPanel paidPanel = createFinanceCard("Đã thu (" + year + ")", paid, AppConstants.ACCENT);
+        
+        financePanel.add(unpaidPanel);
+        financePanel.add(paidPanel);
+        
+        panel.add(financePanel);
+        
+        return panel;
+    }
+    
+    /**
+     * Tạo stat card
+     */
+    private JPanel createStatCard(String label, int count, Color color, String iconName) {
+        JPanel card = new JPanel();
+        card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
+        card.setBackground(AppConstants.BG_DARK);
+        card.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(color.darker(), 2),
+                BorderFactory.createEmptyBorder(20, 20, 20, 20)));
+        
+        JLabel icon = new JLabel(Icons.get(iconName, 32, color));
+        icon.setAlignmentX(Component.CENTER_ALIGNMENT);
+        card.add(icon);
+        card.add(Box.createVerticalStrut(10));
+        
+        JLabel countLabel = new JLabel(String.valueOf(count));
+        countLabel.setFont(new Font(AppConstants.FONT_FAMILY, Font.BOLD, 32));
+        countLabel.setForeground(color);
+        countLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        card.add(countLabel);
+        card.add(Box.createVerticalStrut(5));
+        
+        JLabel labelText = new JLabel(label);
+        labelText.setFont(AppConstants.FONT_BODY);
+        labelText.setForeground(AppConstants.TEXT_SECONDARY);
+        labelText.setAlignmentX(Component.CENTER_ALIGNMENT);
+        card.add(labelText);
+        
+        return card;
+    }
+    
+    /**
+     * Tạo finance card
+     */
+    private JPanel createFinanceCard(String label, double amount, Color color) {
+        JPanel card = new JPanel();
+        card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
+        card.setBackground(AppConstants.BG_DARK);
+        card.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(color.darker(), 2),
+                BorderFactory.createEmptyBorder(15, 20, 15, 20)));
+        
+        JLabel labelText = new JLabel(label);
+        labelText.setFont(AppConstants.FONT_BODY);
+        labelText.setForeground(AppConstants.TEXT_SECONDARY);
+        labelText.setAlignmentX(Component.CENTER_ALIGNMENT);
+        card.add(labelText);
+        card.add(Box.createVerticalStrut(8));
+        
+        JLabel amountLabel = new JLabel(CurrencyUtil.format(amount));
+        amountLabel.setFont(new Font(AppConstants.FONT_FAMILY, Font.BOLD, 24));
+        amountLabel.setForeground(color);
+        amountLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        card.add(amountLabel);
+        
+        return card;
     }
 }
 

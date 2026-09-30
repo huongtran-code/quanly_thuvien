@@ -42,11 +42,16 @@ public class DocumentDAO {
      */
     public List<Document> findByKeyword(String keyword) {
         List<Document> list = new ArrayList<>();
+        
+        // Check if keyword is a number (ID search)
+        boolean isIdSearch = keyword.matches("\\d+");
+        
         String sql = """
                 SELECT d.*, c.name AS category_name
                 FROM documents d
                 LEFT JOIN categories c ON d.category_id = c.id
                 WHERE d.title LIKE ? OR d.author LIKE ? OR d.isbn LIKE ?
+                """ + (isIdSearch ? " OR d.id = ?" : "") + """
                 ORDER BY d.id ASC
                 """;
         try (Connection conn = db.getConnection();
@@ -55,6 +60,9 @@ public class DocumentDAO {
             stmt.setString(1, pattern);
             stmt.setString(2, pattern);
             stmt.setString(3, pattern);
+            if (isIdSearch) {
+                stmt.setInt(4, Integer.parseInt(keyword));
+            }
             ResultSet rs = stmt.executeQuery();
             while (rs.next()) {
                 list.add(mapRow(rs));

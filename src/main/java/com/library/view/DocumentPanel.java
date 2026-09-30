@@ -112,13 +112,27 @@ public class DocumentPanel extends JPanel {
         searchField.putClientProperty("JTextField.leadingIcon", Icons.get("search", 14));
         searchField.addActionListener(e -> doSearch());
 
-        // Tìm kiếm trực tiếp khi gõ (debounce 300ms)
+        // Tìm kiếm với debounce, nhưng search ngay nếu là số (ID)
         searchDebounce = new Timer(300, e -> doSearch());
         searchDebounce.setRepeats(false);
         searchField.getDocument().addDocumentListener(new DocumentListener() {
-            @Override public void insertUpdate(DocumentEvent e) { searchDebounce.restart(); }
-            @Override public void removeUpdate(DocumentEvent e) { searchDebounce.restart(); }
-            @Override public void changedUpdate(DocumentEvent e) { searchDebounce.restart(); }
+            @Override 
+            public void insertUpdate(DocumentEvent e) { 
+                String text = searchField.getText().trim();
+                if (text.matches("\\d+")) {
+                    doSearch();
+                } else {
+                    searchDebounce.restart();
+                }
+            }
+            @Override 
+            public void removeUpdate(DocumentEvent e) { 
+                searchDebounce.restart();
+            }
+            @Override 
+            public void changedUpdate(DocumentEvent e) { 
+                searchDebounce.restart();
+            }
         });
 
         // Category filter

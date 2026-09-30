@@ -72,8 +72,19 @@ public class MainFrame extends JFrame {
         addSidebarItem("Đề xuất mua", "edit", new SuggestionPanel(), "Đề xuất mua sách từ GV/SV", false);
         if (AuthController.getInstance().isAdmin()) {
             addSidebarItem("Báo cáo", "chart", new ReportPanel(), "Báo cáo thống kê chi tiêu", false);
+            addSidebarItem("Nhân sự", "users", new UserPanel(), "Quản lý nhân viên và phân quyền", false);
         }
         addSidebarItem("Sách đã mua", "inbox", customerPanel, "Danh sách sách đã xuất kho cho khách", false);
+        
+        // Front-office features (Librarian only)
+        if (!AuthController.getInstance().isAdmin()) {
+            addSidebarItem("Khách hàng", "users", new CustomerPanel(), "Quản lý khách hàng thư viện", false);
+            addSidebarItem("Mượn sách", "book-open", new BorrowPanel(), "Quản lý mượn/trả sách", false);
+            addSidebarItem("Bán sách", "shopping-cart", new SalePanel(), "Quản lý bán sách", false);
+            addSidebarItem("Gói thành viên", "award", new MembershipPanel(), "Quản lý gói thành viên", false);
+            addSidebarItem("Phạt", "alert-circle", new FinePanel(), "Quản lý phạt và thanh toán", false);
+        }
+        
         addSidebarItem("Quét mã", "scan", scannerPanel, "Kết nối điện thoại quét mã vạch", false);
         addSidebarItem("Trợ lý AI", "bot", new AIAssistantPanel(), "Trợ lý AI tư vấn nghiệp vụ", false);
 

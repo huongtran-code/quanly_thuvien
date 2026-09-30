@@ -32,133 +32,219 @@ public class LoginView extends JFrame {
 
     private void initUI() {
         setTitle(AppConstants.APP_NAME + " - Đăng nhập");
-        setSize(500, 600);
+        setSize(900, 600);
         setLocationRelativeTo(null);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setResizable(false);
 
-        // Main panel with gradient background
-        JPanel mainPanel = new JPanel() {
+        // Main container
+        JPanel mainPanel = new JPanel(new BorderLayout());
+        mainPanel.setBackground(Color.WHITE);
+
+        // Left panel - Illustration/Branding
+        JPanel leftPanel = new JPanel() {
             @Override
             protected void paintComponent(Graphics g) {
                 super.paintComponent(g);
                 Graphics2D g2 = (Graphics2D) g;
                 g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                
+                // Gradient background
                 GradientPaint gp = new GradientPaint(
-                        0, 0, new Color(15, 23, 42),
-                        getWidth(), getHeight(), new Color(30, 27, 75));
+                    0, 0, AppConstants.PRIMARY,
+                    getWidth(), getHeight(), AppConstants.PRIMARY_LIGHT);
                 g2.setPaint(gp);
                 g2.fillRect(0, 0, getWidth(), getHeight());
+                
+                // Decorative circles
+                g2.setColor(new Color(255, 255, 255, 30));
+                g2.fillOval(-50, -50, 300, 300);
+                g2.fillOval(getWidth() - 200, getHeight() - 200, 300, 300);
+                g2.setColor(new Color(255, 255, 255, 20));
+                g2.fillOval(100, getHeight() - 150, 200, 200);
             }
         };
-        mainPanel.setLayout(new GridBagLayout());
+        leftPanel.setLayout(new GridBagLayout());
+        leftPanel.setPreferredSize(new Dimension(400, 600));
+        
+        JPanel brandingBox = new JPanel();
+        brandingBox.setLayout(new BoxLayout(brandingBox, BoxLayout.Y_AXIS));
+        brandingBox.setOpaque(false);
+        
+        JLabel brandIcon = new JLabel(Icons.get("book-open", 80, Color.WHITE));
+        brandIcon.setAlignmentX(Component.CENTER_ALIGNMENT);
+        
+        JLabel brandTitle = new JLabel("Hệ Thống Thư Viện");
+        brandTitle.setFont(new Font(AppConstants.FONT_FAMILY, Font.BOLD, 32));
+        brandTitle.setForeground(Color.WHITE);
+        brandTitle.setAlignmentX(Component.CENTER_ALIGNMENT);
+        
+        JLabel brandSubtitle = new JLabel("Quản lý mua sắm tài liệu hiện đại");
+        brandSubtitle.setFont(new Font(AppConstants.FONT_FAMILY, Font.PLAIN, 16));
+        brandSubtitle.setForeground(new Color(255, 255, 255, 200));
+        brandSubtitle.setAlignmentX(Component.CENTER_ALIGNMENT);
+        
+        brandingBox.add(brandIcon);
+        brandingBox.add(Box.createVerticalStrut(24));
+        brandingBox.add(brandTitle);
+        brandingBox.add(Box.createVerticalStrut(12));
+        brandingBox.add(brandSubtitle);
+        
+        leftPanel.add(brandingBox);
 
-        // Login card
-        JPanel card = new JPanel() {
-            @Override
-            protected void paintComponent(Graphics g) {
-                Graphics2D g2 = (Graphics2D) g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                // Glassmorphism background
-                g2.setColor(new Color(30, 41, 59, 220));
-                g2.fill(new RoundRectangle2D.Float(0, 0, getWidth(), getHeight(), 20, 20));
-                // Border
-                g2.setColor(new Color(99, 102, 241, 80));
-                g2.setStroke(new BasicStroke(1.5f));
-                g2.draw(new RoundRectangle2D.Float(0.5f, 0.5f, getWidth() - 1, getHeight() - 1, 20, 20));
-                g2.dispose();
-            }
-        };
-        card.setOpaque(false);
-        card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
-        card.setBorder(BorderFactory.createEmptyBorder(40, 40, 40, 40));
-        card.setPreferredSize(new Dimension(380, 420));
-
-        // Icon / Title
-        JLabel iconLabel = new JLabel(Icons.get("book", 48, AppConstants.PRIMARY_LIGHT));
-        iconLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-
-        JLabel titleLabel = new JLabel("Đăng nhập hệ thống");
-        titleLabel.setFont(AppConstants.FONT_TITLE);
-        titleLabel.setForeground(AppConstants.TEXT_PRIMARY);
-        titleLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-
-        JLabel subtitleLabel = new JLabel("Quản lý mua sắm tài liệu thư viện");
-        subtitleLabel.setFont(AppConstants.FONT_SMALL);
-        subtitleLabel.setForeground(AppConstants.TEXT_MUTED);
-        subtitleLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-
-        // Username field
+        // Right panel - Login form
+        JPanel rightPanel = new JPanel();
+        rightPanel.setBackground(Color.WHITE);
+        rightPanel.setLayout(new GridBagLayout());
+        
+        JPanel formContainer = new JPanel();
+        formContainer.setLayout(new BoxLayout(formContainer, BoxLayout.Y_AXIS));
+        formContainer.setBackground(Color.WHITE);
+        formContainer.setBorder(BorderFactory.createEmptyBorder(40, 60, 40, 60));
+        formContainer.setMaximumSize(new Dimension(400, 500));
+        
+        // Welcome text
+        JLabel welcomeLabel = new JLabel("Chào mừng trở lại!");
+        welcomeLabel.setFont(new Font(AppConstants.FONT_FAMILY, Font.BOLD, 28));
+        welcomeLabel.setForeground(new Color(30, 41, 59));
+        welcomeLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        
+        JLabel subtitleLabel = new JLabel("Đăng nhập để tiếp tục");
+        subtitleLabel.setFont(new Font(AppConstants.FONT_FAMILY, Font.PLAIN, 14));
+        subtitleLabel.setForeground(new Color(100, 116, 139));
+        subtitleLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        
+        // Username field with icon
         JLabel userLabel = new JLabel("Tên đăng nhập");
-        userLabel.setFont(AppConstants.FONT_BODY);
-        userLabel.setForeground(AppConstants.TEXT_SECONDARY);
-        userLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-        userLabel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 24));
-
-        usernameField = createStyledTextField();
-
-        // Password field
+        userLabel.setFont(new Font(AppConstants.FONT_FAMILY, Font.PLAIN, 13));
+        userLabel.setForeground(new Color(51, 65, 85));
+        userLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        
+        JPanel userFieldPanel = createIconInputField("user", false);
+        usernameField = (JTextField) userFieldPanel.getComponent(1);
+        
+        // Password field with toggle
         JLabel passLabel = new JLabel("Mật khẩu");
-        passLabel.setFont(AppConstants.FONT_BODY);
-        passLabel.setForeground(AppConstants.TEXT_SECONDARY);
-        passLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-        passLabel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 24));
-
-        passwordField = new JPasswordField();
-        styleField(passwordField);
-
+        passLabel.setFont(new Font(AppConstants.FONT_FAMILY, Font.PLAIN, 13));
+        passLabel.setForeground(new Color(51, 65, 85));
+        passLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        
+        JPanel passFieldPanel = createIconInputField("lock", true);
+        passwordField = (JPasswordField) passFieldPanel.getComponent(1);
+        
         // Error label
         errorLabel = new JLabel(" ");
-        errorLabel.setFont(AppConstants.FONT_SMALL);
-        errorLabel.setForeground(AppConstants.DANGER);
-        errorLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-
+        errorLabel.setFont(new Font(AppConstants.FONT_FAMILY, Font.PLAIN, 12));
+        errorLabel.setForeground(new Color(239, 68, 68));
+        errorLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        
         // Login button
         loginButton = new StyledButton("Đăng nhập");
-        loginButton.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
-        loginButton.setAlignmentX(Component.CENTER_ALIGNMENT);
+        loginButton.setFont(new Font(AppConstants.FONT_FAMILY, Font.BOLD, 15));
+        loginButton.setMaximumSize(new Dimension(Integer.MAX_VALUE, 48));
+        loginButton.setAlignmentX(Component.LEFT_ALIGNMENT);
         loginButton.addActionListener(e -> doLogin());
-
-        // Assemble card
-        card.add(iconLabel);
-        card.add(Box.createVerticalStrut(8));
-        card.add(titleLabel);
-        card.add(Box.createVerticalStrut(4));
-        card.add(subtitleLabel);
-        card.add(Box.createVerticalStrut(30));
-        card.add(userLabel);
-        card.add(Box.createVerticalStrut(6));
-        card.add(usernameField);
-        card.add(Box.createVerticalStrut(16));
-        card.add(passLabel);
-        card.add(Box.createVerticalStrut(6));
-        card.add(passwordField);
-        card.add(Box.createVerticalStrut(8));
-        card.add(errorLabel);
-        card.add(Box.createVerticalStrut(16));
-        card.add(loginButton);
-
+        
         // Hint
-        JLabel hintLabel = new JLabel("Mặc định: admin / admin123");
-        hintLabel.setFont(AppConstants.FONT_SMALL);
-        hintLabel.setForeground(AppConstants.TEXT_MUTED);
-        hintLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-        card.add(Box.createVerticalStrut(16));
-        card.add(hintLabel);
+        JPanel hintPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        hintPanel.setOpaque(false);
+        hintPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
+        hintPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        
+        JLabel hintIcon = new JLabel(Icons.get("info", 14, new Color(100, 116, 139)));
+        JLabel hintText = new JLabel(" Mặc định: admin / admin123");
+        hintText.setFont(new Font(AppConstants.FONT_FAMILY, Font.PLAIN, 12));
+        hintText.setForeground(new Color(100, 116, 139));
+        
+        hintPanel.add(hintIcon);
+        hintPanel.add(hintText);
+        
+        // Assemble form
+        formContainer.add(welcomeLabel);
+        formContainer.add(Box.createVerticalStrut(8));
+        formContainer.add(subtitleLabel);
+        formContainer.add(Box.createVerticalStrut(40));
+        formContainer.add(userLabel);
+        formContainer.add(Box.createVerticalStrut(8));
+        formContainer.add(userFieldPanel);
+        formContainer.add(Box.createVerticalStrut(24));
+        formContainer.add(passLabel);
+        formContainer.add(Box.createVerticalStrut(8));
+        formContainer.add(passFieldPanel);
+        formContainer.add(Box.createVerticalStrut(8));
+        formContainer.add(errorLabel);
+        formContainer.add(Box.createVerticalStrut(24));
+        formContainer.add(loginButton);
+        formContainer.add(Box.createVerticalStrut(20));
+        formContainer.add(hintPanel);
+        
+        rightPanel.add(formContainer);
 
-        mainPanel.add(card);
+        // Add panels to main
+        mainPanel.add(leftPanel, BorderLayout.WEST);
+        mainPanel.add(rightPanel, BorderLayout.CENTER);
+        
         setContentPane(mainPanel);
-
-        // Enter ở bất kỳ đâu trong form đều kích hoạt đăng nhập
         getRootPane().setDefaultButton(loginButton);
 
-        // Tự focus ô tên đăng nhập khi mở cửa sổ
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowOpened(WindowEvent e) {
                 usernameField.requestFocusInWindow();
             }
         });
+    }
+    
+    private JPanel createIconInputField(String iconName, boolean isPassword) {
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.setBackground(new Color(248, 250, 252));
+        panel.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(new Color(226, 232, 240), 1, true),
+            BorderFactory.createEmptyBorder(12, 14, 12, 14)
+        ));
+        panel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 48));
+        panel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        
+        JLabel icon = new JLabel(Icons.get(iconName, 18, new Color(100, 116, 139)));
+        icon.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 10));
+        panel.add(icon, BorderLayout.WEST);
+        
+        JTextField field;
+        if (isPassword) {
+            field = new JPasswordField();
+            ((JPasswordField) field).setEchoChar('•');
+        } else {
+            field = new JTextField();
+        }
+        
+        field.setFont(new Font(AppConstants.FONT_FAMILY, Font.PLAIN, 14));
+        field.setForeground(new Color(30, 41, 59));
+        field.setCaretColor(AppConstants.PRIMARY);
+        field.setBackground(new Color(248, 250, 252));
+        field.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
+        panel.add(field, BorderLayout.CENTER);
+        
+        if (isPassword) {
+            JButton toggleBtn = new JButton(Icons.get("eye", 18, new Color(148, 163, 184)));
+            toggleBtn.setContentAreaFilled(false);
+            toggleBtn.setBorderPainted(false);
+            toggleBtn.setFocusPainted(false);
+            toggleBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+            toggleBtn.setBorder(BorderFactory.createEmptyBorder(0, 10, 0, 0));
+            toggleBtn.addActionListener(e -> {
+                JPasswordField pf = (JPasswordField) field;
+                if (pf.getEchoChar() == '\u0000') {
+                    pf.setEchoChar('•');
+                    toggleBtn.setIcon(Icons.get("eye", 18, new Color(148, 163, 184)));
+                } else {
+                    pf.setEchoChar('\u0000');
+                    toggleBtn.setIcon(Icons.get("eye-off", 18, AppConstants.PRIMARY));
+                }
+            });
+            panel.add(toggleBtn, BorderLayout.EAST);
+        }
+        
+        return panel;
     }
 
     private void doLogin() {
@@ -214,10 +300,9 @@ public class LoginView extends JFrame {
     }
 
     private void showError(String message) {
-        errorLabel.setIcon(Icons.get("alert-triangle", 13, AppConstants.DANGER));
+        errorLabel.setIcon(Icons.get("alert-circle", 14, new Color(248, 113, 113)));
         errorLabel.setIconTextGap(6);
         errorLabel.setText(message);
-        // Shake animation (không chồng lặp khi gọi liên tiếp)
         if (shakeTimer != null && shakeTimer.isRunning()) {
             return;
         }
@@ -235,18 +320,5 @@ public class LoginView extends JFrame {
             }
         });
         shakeTimer.start();
-    }
-
-    private JTextField createStyledTextField() {
-        JTextField field = new JTextField();
-        styleField(field);
-        return field;
-    }
-
-    private void styleField(JTextField field) {
-        UiFactory.styleField(field);
-        field.setAlignmentX(Component.CENTER_ALIGNMENT);
-        field.setMaximumSize(new Dimension(Integer.MAX_VALUE, 38));
-        field.setPreferredSize(new Dimension(300, 38));
     }
 }

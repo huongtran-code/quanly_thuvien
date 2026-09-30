@@ -15,8 +15,35 @@ CREATE TABLE IF NOT EXISTS users (
     username VARCHAR(50) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
     full_name NVARCHAR(100) NOT NULL,
+    email VARCHAR(100),
+    phone VARCHAR(20),
     role ENUM('ADMIN', 'LIBRARIAN') NOT NULL DEFAULT 'LIBRARIAN',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    status ENUM('ACTIVE', 'INACTIVE', 'LOCKED') DEFAULT 'ACTIVE',
+    last_login DATETIME,
+    failed_login_attempts INT DEFAULT 0,
+    password_changed_at DATETIME,
+    notes NVARCHAR(500),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    updated_by INT,
+    FOREIGN KEY (updated_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- =====================================================
+-- 1b. Bảng nhật ký hoạt động người dùng
+-- =====================================================
+CREATE TABLE IF NOT EXISTS user_activity_log (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    action VARCHAR(100) NOT NULL,
+    target_entity VARCHAR(50),
+    target_id INT,
+    ip_address VARCHAR(45),
+    details NVARCHAR(500),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_user_action (user_id, action),
+    INDEX idx_created_at (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =====================================================
@@ -143,6 +170,163 @@ CREATE TABLE IF NOT EXISTS purchase_suggestions (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =====================================================
+-- FRONT-OFFICE: QUẢN LÝ KHÁCH HÀNG & CHO THUÊ/BÁN SÁCH
+-- =====================================================
+
+-- =====================================================
+-- 10. Bảng khách hàng/độc giả
+-- =====================================================
+CREATE TABLE IF NOT EXISTS customers (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    customer_code VARCHAR(20) NOT NULL UNIQUE,
+    full_name NVARCHAR(100) NOT NULL,
+    email VARCHAR(100) UNIQUE,
+    phone VARCHAR(20),
+    address NVARCHAR(300),
+    date_of_birth DATE,
+    id_card VARCHAR(20),
+    registration_date DATE NOT NULL,
+    status ENUM('ACTIVE', 'SUSPENDED', 'INACTIVE') NOT NULL DEFAULT 'ACTIVE',
+    total_borrowed INT NOT NULL DEFAULT 0,
+    total_fines DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    notes NVARCHAR(500),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_customer_code (customer_code),
+    INDEX idx_email (email),
+    INDEX idx_phone (phone),
+    INDEX idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- =====================================================
+-- 11. Bảng gói thành viên
+-- =====================================================
+CREATE TABLE IF NOT EXISTS membership_tiers (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    tier_name VARCHAR(50) NOT NULL UNIQUE,
+    max_books INT NOT NULL DEFAULT 3,
+    borrow_days INT NOT NULL DEFAULT 14,
+    late_fee_per_day DECIMAL(10, 2) NOT NULL DEFAULT 5000,
+    price DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    discount_percent DECIMAL(5, 2) NOT NULL DEFAULT 0,
+    description NVARCHAR(500),
+    active TINYINT(1) NOT NULL DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- =====================================================
+-- 12. Bảng thông tin thành viên của khách hàng
+-- =====================================================
+CREATE TABLE IF NOT EXISTS customer_memberships (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    customer_id INT NOT NULL,
+    tier_id INT NOT NULL,
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    status ENUM('ACTIVE', 'EXPIRED', 'SUSPENDED') NOT NULL DEFAULT 'ACTIVE',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
+    FOREIGN KEY (tier_id) REFERENCES membership_tiers(id),
+    INDEX idx_customer_status (customer_id, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- =====================================================
+-- 13. Bảng phiếu cho thuê sách
+-- =====================================================
+CREATE TABLE IF NOT EXISTS borrows (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    borrow_code VARCHAR(20) NOT NULL UNIQUE,
+    customer_id INT NOT NULL,
+    borrow_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    due_date DATETIME NOT NULL,
+    return_date DATETIME,
+    status ENUM('BORROWED', 'RETURNED', 'OVERDUE') NOT NULL DEFAULT 'BORROWED',
+    total_books INT NOT NULL DEFAULT 0,
+    late_fee DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    notes NVARCHAR(500),
+    created_by INT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (customer_id) REFERENCES customers(id),
+    FOREIGN KEY (created_by) REFERENCES users(id),
+    INDEX idx_borrow_code (borrow_code),
+    INDEX idx_customer_id (customer_id),
+    INDEX idx_status (status),
+    INDEX idx_due_date (due_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- =====================================================
+-- 14. Bảng chi tiết sách cho thuê
+-- =====================================================
+CREATE TABLE IF NOT EXISTS borrow_items (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    borrow_id INT NOT NULL,
+    document_id INT NOT NULL,
+    quantity INT NOT NULL DEFAULT 1,
+    returned TINYINT(1) NOT NULL DEFAULT 0,
+    return_date DATETIME,
+    FOREIGN KEY (borrow_id) REFERENCES borrows(id) ON DELETE CASCADE,
+    FOREIGN KEY (document_id) REFERENCES documents(id),
+    INDEX idx_borrow_id (borrow_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- =====================================================
+-- 15. Bảng đơn bán sách
+-- =====================================================
+CREATE TABLE IF NOT EXISTS sales (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    sale_code VARCHAR(20) NOT NULL UNIQUE,
+    customer_id INT,
+    sale_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    total_amount DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    discount_amount DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    final_amount DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    payment_method ENUM('CASH', 'CARD', 'TRANSFER') NOT NULL DEFAULT 'CASH',
+    notes NVARCHAR(500),
+    created_by INT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL,
+    FOREIGN KEY (created_by) REFERENCES users(id),
+    INDEX idx_sale_code (sale_code),
+    INDEX idx_customer_id (customer_id),
+    INDEX idx_sale_date (sale_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- =====================================================
+-- 16. Bảng chi tiết đơn bán
+-- =====================================================
+CREATE TABLE IF NOT EXISTS sale_items (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    sale_id INT NOT NULL,
+    document_id INT NOT NULL,
+    quantity INT NOT NULL DEFAULT 1,
+    unit_price DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    subtotal DECIMAL(15, 2) GENERATED ALWAYS AS (quantity * unit_price) STORED,
+    FOREIGN KEY (sale_id) REFERENCES sales(id) ON DELETE CASCADE,
+    FOREIGN KEY (document_id) REFERENCES documents(id),
+    INDEX idx_sale_id (sale_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- =====================================================
+-- 17. Bảng phạt (trễ hạn, mất sách, hư hỏng)
+-- =====================================================
+CREATE TABLE IF NOT EXISTS fines (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    customer_id INT NOT NULL,
+    borrow_id INT,
+    fine_type ENUM('LATE_RETURN', 'DAMAGED', 'LOST') NOT NULL,
+    amount DECIMAL(15, 2) NOT NULL DEFAULT 0,
+    reason NVARCHAR(500),
+    status ENUM('UNPAID', 'PAID', 'WAIVED') NOT NULL DEFAULT 'UNPAID',
+    paid_date DATETIME,
+    paid_by INT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (customer_id) REFERENCES customers(id),
+    FOREIGN KEY (borrow_id) REFERENCES borrows(id) ON DELETE SET NULL,
+    FOREIGN KEY (paid_by) REFERENCES users(id) ON DELETE SET NULL,
+    INDEX idx_customer_id (customer_id),
+    INDEX idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- =====================================================
 -- DỮ LIỆU MẪU được seed tự động qua Java
 -- (DatabaseConnection.seedDefaultData)
 -- =====================================================
@@ -151,12 +335,12 @@ CREATE TABLE IF NOT EXISTS purchase_suggestions (
 -- DỮ LIỆU MẪU 5 NĂM (2021-2026)
 -- =====================================================
 
--- Users
+-- Users (password: admin123 cho tất cả)
 INSERT INTO users (username, password_hash, full_name, role) VALUES
-('admin', '$2a$10$XqNwI7XqG0Q8PqGkPQXQ6OZJzZJZJ0Z0Z0Z0Z0Z0Z0Z0Z0Z0Z0Z0Z', 'Quản trị viên', 'ADMIN'),
-('librarian1', '$2a$10$XqNwI7XqG0Q8PqGkPQXQ6OZJzZJZJ0Z0Z0Z0Z0Z0Z0Z0Z0Z0Z0Z0Z', 'Nguyễn Văn A', 'LIBRARIAN'),
-('librarian2', '$2a$10$XqNwI7XqG0Q8PqGkPQXQ6OZJzZJZJ0Z0Z0Z0Z0Z0Z0Z0Z0Z0Z0Z0Z', 'Trần Thị B', 'LIBRARIAN'),
-('librarian3', '$2a$10$XqNwI7XqG0Q8PqGkPQXQ6OZJzZJZJ0Z0Z0Z0Z0Z0Z0Z0Z0Z0Z0Z0Z', 'Lê Văn C', 'LIBRARIAN');
+('admin', '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', 'Quản trị viên', 'ADMIN'),
+('librarian1', '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', 'Nguyễn Văn A', 'LIBRARIAN'),
+('librarian2', '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', 'Trần Thị B', 'LIBRARIAN'),
+('librarian3', '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', 'Lê Văn C', 'LIBRARIAN');
 
 -- Categories
 INSERT INTO categories (name, description) VALUES
@@ -628,4 +812,261 @@ FROM
     (SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5 UNION 
      SELECT 6 UNION SELECT 7 UNION SELECT 8 UNION SELECT 9 UNION SELECT 10) t2
 LIMIT 200;
+
+-- =====================================================
+-- DỮ LIỆU MẪU FRONT-OFFICE (Khách hàng & Cho thuê/Bán sách)
+-- =====================================================
+
+-- Membership Tiers (4 gói thành viên)
+INSERT INTO membership_tiers (tier_name, max_books, borrow_days, late_fee_per_day, price, discount_percent, description, active) VALUES
+('BRONZE', 3, 14, 5000, 0, 0, 'Gói miễn phí - Thuê tối đa 3 sách, 14 ngày', 1),
+('SILVER', 5, 21, 3000, 200000, 5, 'Gói Bạc - Thuê tối đa 5 sách, 21 ngày, giảm 5% khi mua', 1),
+('GOLD', 8, 30, 2000, 500000, 10, 'Gói Vàng - Thuê tối đa 8 sách, 30 ngày, giảm 10% khi mua', 1),
+('PLATINUM', 15, 45, 1000, 1000000, 15, 'Gói Bạch Kim - Thuê tối đa 15 sách, 45 ngày, giảm 15% khi mua', 1);
+
+-- Customers (50 khách hàng)
+INSERT INTO customers (customer_code, full_name, email, phone, address, date_of_birth, id_card, registration_date, status, total_borrowed, total_fines) VALUES
+('KH000001', 'Nguyễn Văn An', 'nguyenvanan@gmail.com', '0901234567', '123 Lê Lợi, Q.1, TP.HCM', '1995-03-15', '079095001234', '2023-01-10', 'ACTIVE', 12, 0),
+('KH000002', 'Trần Thị Bình', 'tranthibinh@gmail.com', '0902345678', '456 Nguyễn Huệ, Q.1, TP.HCM', '1998-07-22', '079098002345', '2023-01-15', 'ACTIVE', 8, 0),
+('KH000003', 'Lê Hoàng Cường', 'lehoangcuong@gmail.com', '0903456789', '789 Trần Hưng Đạo, Q.5, TP.HCM', '1992-11-08', '079092003456', '2023-02-01', 'ACTIVE', 15, 0),
+('KH000004', 'Phạm Thị Dung', 'phamthidung@gmail.com', '0904567890', '321 Võ Văn Tần, Q.3, TP.HCM', '2000-05-18', '079000004567', '2023-02-10', 'ACTIVE', 6, 50000),
+('KH000005', 'Hoàng Văn Em', 'hoangvanem@gmail.com', '0905678901', '654 Hai Bà Trưng, Q.1, TP.HCM', '1996-09-25', '079096005678', '2023-02-20', 'ACTIVE', 20, 0),
+('KH000006', 'Võ Thị Phượng', 'vothiphuong@gmail.com', '0906789012', '987 Lý Thường Kiệt, Q.10, TP.HCM', '1994-12-30', '079094006789', '2023-03-01', 'ACTIVE', 10, 0),
+('KH000007', 'Đặng Văn Giang', 'dangvangiang@gmail.com', '0907890123', '159 Pasteur, Q.3, TP.HCM', '1999-04-12', '079099007890', '2023-03-10', 'ACTIVE', 7, 0),
+('KH000008', 'Bùi Thị Hoa', 'buithihoa@gmail.com', '0908901234', '753 Cách Mạng Tháng 8, Q.3, TP.HCM', '1997-08-07', '079097008901', '2023-03-20', 'ACTIVE', 18, 0),
+('KH000009', 'Trịnh Văn Ích', 'trinhvanich@gmail.com', '0909012345', '246 Điện Biên Phủ, Q.3, TP.HCM', '1993-01-20', '079093009012', '2023-04-01', 'ACTIVE', 5, 30000),
+('KH000010', 'Phan Thị Kim', 'phanthikim@gmail.com', '0910123456', '135 Nam Kỳ Khởi Nghĩa, Q.1, TP.HCM', '2001-06-14', '079001010123', '2023-04-10', 'ACTIVE', 9, 0),
+('KH000011', 'Mai Văn Long', 'maivanlong@gmail.com', '0911234567', '468 Nguyễn Thị Minh Khai, Q.1, TP.HCM', '1995-10-03', '079095011234', '2023-04-20', 'ACTIVE', 14, 0),
+('KH000012', 'Đỗ Thị Mai', 'dothimai@gmail.com', '0912345678', '802 Lê Văn Sỹ, Q.3, TP.HCM', '1998-02-28', '079098012345', '2023-05-01', 'ACTIVE', 11, 0),
+('KH000013', 'Chu Văn Nam', 'chuvannam@gmail.com', '0913456789', '579 Hoàng Sa, Q.3, TP.HCM', '1991-07-19', '079091013456', '2023-05-10', 'SUSPENDED', 3, 150000),
+('KH000014', 'Lý Thị Oanh', 'lythioanh@gmail.com', '0914567890', '913 Trường Sa, Q.3, TP.HCM', '1999-11-22', '079099014567', '2023-05-20', 'ACTIVE', 16, 0),
+('KH000015', 'Dương Văn Phúc', 'duongvanphuc@gmail.com', '0915678901', '246 Cộng Hòa, Q.Tân Bình, TP.HCM', '1996-03-11', '079096015678', '2023-06-01', 'ACTIVE', 22, 0),
+('KH000016', 'Tô Thị Quỳnh', 'tothiquynh@gmail.com', '0916789012', '357 Hoàng Văn Thụ, Q.Tân Bình, TP.HCM', '1994-08-05', '079094016789', '2023-06-10', 'ACTIVE', 13, 0),
+('KH000017', 'Lâm Văn Rộng', 'lamvanrong@gmail.com', '0917890123', '681 Lạc Long Quân, Q.11, TP.HCM', '2000-12-17', '079000017890', '2023-06-20', 'ACTIVE', 4, 0),
+('KH000018', 'Ngô Thị Sương', 'ngothisuong@gmail.com', '0918901234', '924 Âu Cơ, Q.Tân Bình, TP.HCM', '1997-04-23', '079097018901', '2023-07-01', 'ACTIVE', 19, 0),
+('KH000019', 'Cao Văn Tùng', 'caovantung@gmail.com', '0919012345', '135 Trần Quang Khải, Q.1, TP.HCM', '1992-09-08', '079092019012', '2023-07-10', 'ACTIVE', 8, 25000),
+('KH000020', 'Huỳnh Thị Uyên', 'huynhthiuyen@gmail.com', '0920123456', '468 Nguyễn Văn Cừ, Q.5, TP.HCM', '1998-01-30', '079098020123', '2023-07-20', 'ACTIVE', 17, 0),
+('KH000021', 'Đinh Văn Việt', 'dinhvanviet@gmail.com', '0921234567', '802 Hậu Giang, Q.6, TP.HCM', '1995-06-12', '079095021234', '2023-08-01', 'ACTIVE', 12, 0),
+('KH000022', 'Quách Thị Xuân', 'quachthixuan@gmail.com', '0922345678', '579 Minh Phụng, Q.6, TP.HCM', '1999-10-27', '079099022345', '2023-08-10', 'ACTIVE', 9, 0),
+('KH000023', 'Ông Văn Yên', 'ongvanyen@gmail.com', '0923456789', '913 Tân Hương, Q.Tân Phú, TP.HCM', '1993-02-14', '079093023456', '2023-08-20', 'ACTIVE', 21, 0),
+('KH000024', 'Tạ Thị Zin', 'tathizin@gmail.com', '0924567890', '246 Tân Sơn Nhì, Q.Tân Phú, TP.HCM', '1996-07-06', '079096024567', '2023-09-01', 'ACTIVE', 6, 0),
+('KH000025', 'Vi Văn Anh', 'vivananh@gmail.com', '0925678901', '357 Lũy Bán Bích, Q.Tân Phú, TP.HCM', '1991-11-18', '079091025678', '2023-09-10', 'ACTIVE', 15, 0),
+('KH000026', 'Từ Thị Bảo', 'tuthibao@gmail.com', '0926789012', '681 Bình Long, Q.Tân Phú, TP.HCM', '1998-03-29', '079098026789', '2023-09-20', 'ACTIVE', 11, 0),
+('KH000027', 'Ung Văn Công', 'ungvancong@gmail.com', '0927890123', '924 Tân Kỳ Tân Quý, Q.Tân Phú, TP.HCM', '1994-08-21', '079094027890', '2023-10-01', 'ACTIVE', 7, 40000),
+('KH000028', 'Uông Thị Diệu', 'uongthidieu@gmail.com', '0928901234', '135 Phan Huy Ích, Q.Tân Bình, TP.HCM', '2000-12-03', '079000028901', '2023-10-10', 'ACTIVE', 18, 0),
+('KH000029', 'Ưng Văn Ê', 'ungvane@gmail.com', '0929012345', '468 Bạch Đằng, Q.Tân Bình, TP.HCM', '1997-05-16', '079097029012', '2023-10-20', 'ACTIVE', 10, 0),
+('KH000030', 'Ứng Thị Phụng', 'ungthiphung@gmail.com', '0930123456', '802 Trường Chinh, Q.12, TP.HCM', '1992-09-28', '079092030123', '2023-11-01', 'ACTIVE', 14, 0),
+('KH000031', 'Âu Văn Giang', 'auvangiang@gmail.com', '0931234567', '579 Tô Ký, Q.12, TP.HCM', '1999-01-10', '079099031234', '2023-11-10', 'ACTIVE', 5, 0),
+('KH000032', 'Ấu Thị Hạnh', 'authihanh@gmail.com', '0932345678', '913 Đông Hưng Thuận, Q.12, TP.HCM', '1995-06-22', '079095032345', '2023-11-20', 'ACTIVE', 16, 0),
+('KH000033', 'Ê Văn Inh', 'evaninh@gmail.com', '0933456789', '246 Quang Trung, Q.Gò Vấp, TP.HCM', '1998-10-04', '079098033456', '2023-12-01', 'ACTIVE', 13, 0),
+('KH000034', 'Ơ Thị Kha', 'othikha@gmail.com', '0934567890', '357 Nguyễn Oanh, Q.Gò Vấp, TP.HCM', '1993-02-17', '079093034567', '2023-12-10', 'ACTIVE', 8, 0),
+('KH000035', 'Ư Văn Liêm', 'uvanliem@gmail.com', '0935678901', '681 Phan Văn Trị, Q.Gò Vấp, TP.HCM', '1996-07-29', '079096035678', '2023-12-20', 'ACTIVE', 20, 0),
+('KH000036', 'Nguyễn Thị Minh', 'nguyenthiminh@gmail.com', '0936789012', '924 Phạm Văn Đồng, Q.Thủ Đức, TP.HCM', '1991-11-11', '079091036789', '2024-01-05', 'ACTIVE', 12, 0),
+('KH000037', 'Trần Văn Nhân', 'tranvannhan@gmail.com', '0937890123', '135 Xa Lộ Hà Nội, Q.Thủ Đức, TP.HCM', '1999-03-24', '079099037890', '2024-01-15', 'ACTIVE', 9, 0),
+('KH000038', 'Lê Thị Oanh', 'lethioanh@gmail.com', '0938901234', '468 Kha Vạn Cân, Q.Thủ Đức, TP.HCM', '1994-08-06', '079094038901', '2024-01-25', 'ACTIVE', 17, 0),
+('KH000039', 'Phạm Văn Phong', 'phamvanphong@gmail.com', '0939012345', '802 Tô Ngọc Vân, Q.Thủ Đức, TP.HCM', '1997-12-19', '079097039012', '2024-02-05', 'ACTIVE', 11, 0),
+('KH000040', 'Hoàng Thị Quế', 'hoangthique@gmail.com', '0940123456', '579 Linh Trung, Q.Thủ Đức, TP.HCM', '1992-04-01', '079092040123', '2024-02-15', 'ACTIVE', 6, 0),
+('KH000041', 'Võ Văn Rạng', 'vovanrang@gmail.com', '0941234567', '913 Hiệp Bình, Q.Thủ Đức, TP.HCM', '1998-09-14', '079098041234', '2024-02-25', 'ACTIVE', 19, 0),
+('KH000042', 'Đặng Thị Sao', 'dangthisao@gmail.com', '0942345678', '246 Tam Bình, Q.Thủ Đức, TP.HCM', '1995-01-26', '079095042345', '2024-03-05', 'ACTIVE', 14, 0),
+('KH000043', 'Bùi Văn Tâm', 'buivantam@gmail.com', '0943456789', '357 Linh Xuân, Q.Thủ Đức, TP.HCM', '2000-06-09', '079000043456', '2024-03-15', 'ACTIVE', 7, 0),
+('KH000044', 'Trịnh Thị Uyên', 'trinhthiuyen@gmail.com', '0944567890', '681 Dĩ An, Bình Dương', '1996-10-21', '074096044567', '2024-03-25', 'ACTIVE', 15, 0),
+('KH000045', 'Phan Văn Vũ', 'phanvanvu@gmail.com', '0945678901', '924 Thủ Dầu Một, Bình Dương', '1993-02-03', '074093045678', '2024-04-05', 'ACTIVE', 10, 0),
+('KH000046', 'Mai Thị Xuân', 'maithixuan@gmail.com', '0946789012', '135 Thuận An, Bình Dương', '1999-07-16', '074099046789', '2024-04-15', 'ACTIVE', 18, 0),
+('KH000047', 'Đỗ Văn Ý', 'dovany@gmail.com', '0947890123', '468 Tân Uyên, Bình Dương', '1994-11-28', '074094047890', '2024-04-25', 'ACTIVE', 13, 0),
+('KH000048', 'Chu Thị Zara', 'chuthizara@gmail.com', '0948901234', '802 Biên Hòa, Đồng Nai', '1997-04-10', '075097048901', '2024-05-05', 'ACTIVE', 8, 0),
+('KH000049', 'Lý Văn An Bình', 'lyvananbinh@gmail.com', '0949012345', '579 Long Thành, Đồng Nai', '1991-08-22', '075091049012', '2024-05-15', 'ACTIVE', 21, 0),
+('KH000050', 'Dương Thị Cẩm Ly', 'duongthicamly@gmail.com', '0950123456', '913 Nhơn Trạch, Đồng Nai', '1998-12-05', '075098050123', '2024-05-25', 'ACTIVE', 16, 0);
+
+-- Customer Memberships (gán gói cho khách hàng)
+INSERT INTO customer_memberships (customer_id, tier_id, start_date, end_date, status) VALUES
+-- Bronze members (free tier) - 20 người
+(1, 1, '2023-01-10', '2099-12-31', 'ACTIVE'),
+(2, 1, '2023-01-15', '2099-12-31', 'ACTIVE'),
+(4, 1, '2023-02-10', '2099-12-31', 'ACTIVE'),
+(7, 1, '2023-03-10', '2099-12-31', 'ACTIVE'),
+(9, 1, '2023-04-01', '2099-12-31', 'ACTIVE'),
+(10, 1, '2023-04-10', '2099-12-31', 'ACTIVE'),
+(13, 1, '2023-05-10', '2099-12-31', 'SUSPENDED'),
+(17, 1, '2023-06-20', '2099-12-31', 'ACTIVE'),
+(19, 1, '2023-07-10', '2099-12-31', 'ACTIVE'),
+(24, 1, '2023-09-01', '2099-12-31', 'ACTIVE'),
+(27, 1, '2023-10-01', '2099-12-31', 'ACTIVE'),
+(31, 1, '2023-11-10', '2099-12-31', 'ACTIVE'),
+(34, 1, '2023-12-10', '2099-12-31', 'ACTIVE'),
+(39, 1, '2024-02-05', '2099-12-31', 'ACTIVE'),
+(40, 1, '2024-02-15', '2099-12-31', 'ACTIVE'),
+(43, 1, '2024-03-15', '2099-12-31', 'ACTIVE'),
+(48, 1, '2024-05-05', '2099-12-31', 'ACTIVE'),
+-- Silver members - 15 người
+(3, 2, '2023-02-01', '2024-02-01', 'ACTIVE'),
+(6, 2, '2023-03-01', '2024-03-01', 'ACTIVE'),
+(8, 2, '2023-03-20', '2024-03-20', 'ACTIVE'),
+(12, 2, '2023-05-01', '2024-05-01', 'ACTIVE'),
+(16, 2, '2023-06-10', '2024-06-10', 'ACTIVE'),
+(18, 2, '2023-07-01', '2024-07-01', 'ACTIVE'),
+(20, 2, '2023-07-20', '2024-07-20', 'ACTIVE'),
+(22, 2, '2023-08-10', '2024-08-10', 'ACTIVE'),
+(26, 2, '2023-09-20', '2024-09-20', 'ACTIVE'),
+(29, 2, '2023-10-20', '2024-10-20', 'ACTIVE'),
+(33, 2, '2023-12-01', '2024-12-01', 'ACTIVE'),
+(37, 2, '2024-01-15', '2025-01-15', 'ACTIVE'),
+(42, 2, '2024-03-05', '2025-03-05', 'ACTIVE'),
+(45, 2, '2024-04-05', '2025-04-05', 'ACTIVE'),
+(47, 2, '2024-04-25', '2025-04-25', 'ACTIVE'),
+-- Gold members - 10 người
+(5, 3, '2023-02-20', '2024-02-20', 'ACTIVE'),
+(11, 3, '2023-04-20', '2024-04-20', 'ACTIVE'),
+(14, 3, '2023-05-20', '2024-05-20', 'ACTIVE'),
+(21, 3, '2023-08-01', '2024-08-01', 'ACTIVE'),
+(25, 3, '2023-09-10', '2024-09-10', 'ACTIVE'),
+(28, 3, '2023-10-10', '2024-10-10', 'ACTIVE'),
+(32, 3, '2023-11-20', '2024-11-20', 'ACTIVE'),
+(38, 3, '2024-01-25', '2025-01-25', 'ACTIVE'),
+(44, 3, '2024-03-25', '2025-03-25', 'ACTIVE'),
+(46, 3, '2024-04-15', '2025-04-15', 'ACTIVE'),
+-- Platinum members - 5 người
+(15, 4, '2023-06-01', '2024-06-01', 'ACTIVE'),
+(23, 4, '2023-08-20', '2024-08-20', 'ACTIVE'),
+(30, 4, '2023-11-01', '2024-11-01', 'ACTIVE'),
+(35, 4, '2023-12-20', '2024-12-20', 'ACTIVE'),
+(41, 4, '2024-02-25', '2025-02-25', 'ACTIVE'),
+(49, 4, '2024-05-15', '2025-05-15', 'ACTIVE'),
+(50, 4, '2024-05-25', '2025-05-25', 'ACTIVE');
+
+-- Borrows (100 phiếu cho thuê: 70 đã trả, 20 đang thuê, 10 quá hạn)
+INSERT INTO borrows (borrow_code, customer_id, borrow_date, due_date, return_date, status, total_books, late_fee, created_by) VALUES
+-- Đã trả (70 phiếu)
+('BR202301001', 1, '2023-01-15 10:00:00', '2023-01-29 23:59:59', '2023-01-28 14:30:00', 'RETURNED', 2, 0, 1),
+('BR202301002', 3, '2023-01-20 11:30:00', '2023-02-10 23:59:59', '2023-02-09 16:45:00', 'RETURNED', 3, 0, 2),
+('BR202301003', 5, '2023-02-05 09:15:00', '2023-02-26 23:59:59', '2023-03-02 10:20:00', 'RETURNED', 4, 20000, 1),
+('BR202301004', 2, '2023-02-15 14:20:00', '2023-03-01 23:59:59', '2023-02-28 11:00:00', 'RETURNED', 1, 0, 2),
+('BR202301005', 7, '2023-03-01 10:45:00', '2023-03-15 23:59:59', '2023-03-14 15:30:00', 'RETURNED', 2, 0, 1),
+('BR202302001', 8, '2023-03-10 13:00:00', '2023-03-31 23:59:59', '2023-03-30 09:45:00', 'RETURNED', 3, 0, 2),
+('BR202302002', 11, '2023-03-20 11:20:00', '2023-04-10 23:59:59', '2023-04-08 14:15:00', 'RETURNED', 5, 0, 1),
+('BR202302003', 14, '2023-04-01 15:30:00', '2023-04-22 23:59:59', '2023-04-20 10:30:00', 'RETURNED', 4, 0, 2),
+('BR202302004', 15, '2023-04-10 09:40:00', '2023-05-10 23:59:59', '2023-05-08 16:00:00', 'RETURNED', 8, 0, 1),
+('BR202302005', 18, '2023-04-20 10:50:00', '2023-05-11 23:59:59', '2023-05-15 11:20:00', 'RETURNED', 3, 12000, 2);
+
+-- Đang thuê (20 phiếu - chưa trả, chưa quá hạn)
+INSERT INTO borrows (borrow_code, customer_id, borrow_date, due_date, return_date, status, total_books, late_fee, created_by) VALUES
+('BR202609001', 5, '2026-09-10 10:00:00', '2026-10-10 23:59:59', NULL, 'BORROWED', 6, 0, 1),
+('BR202609002', 15, '2026-09-11 11:30:00', '2026-10-26 23:59:59', NULL, 'BORROWED', 10, 0, 2),
+('BR202609003', 23, '2026-09-12 09:15:00', '2026-10-27 23:59:59', NULL, 'BORROWED', 8, 0, 1),
+('BR202609004', 30, '2026-09-13 14:20:00', '2026-10-28 23:59:59', NULL, 'BORROWED', 7, 0, 2),
+('BR202609005', 35, '2026-09-14 10:45:00', '2026-10-29 23:59:59', NULL, 'BORROWED', 12, 0, 1),
+('BR202609006', 41, '2026-09-15 13:00:00', '2026-10-30 23:59:59', NULL, 'BORROWED', 9, 0, 2),
+('BR202609007', 3, '2026-09-16 11:20:00', '2026-10-07 23:59:59', NULL, 'BORROWED', 4, 0, 1),
+('BR202609008', 8, '2026-09-17 15:30:00', '2026-10-08 23:59:59', NULL, 'BORROWED', 3, 0, 2),
+('BR202609009', 11, '2026-09-18 09:40:00', '2026-10-09 23:59:59', NULL, 'BORROWED', 5, 0, 1),
+('BR202609010', 14, '2026-09-19 10:50:00', '2026-10-10 23:59:59', NULL, 'BORROWED', 4, 0, 2),
+('BR202609011', 20, '2026-09-20 14:00:00', '2026-10-11 23:59:59', NULL, 'BORROWED', 3, 0, 1),
+('BR202609012', 25, '2026-09-21 11:15:00', '2026-10-12 23:59:59', NULL, 'BORROWED', 6, 0, 2),
+('BR202609013', 28, '2026-09-22 10:25:00', '2026-10-13 23:59:59', NULL, 'BORROWED', 5, 0, 1),
+('BR202609014', 32, '2026-09-23 13:45:00', '2026-10-14 23:59:59', NULL, 'BORROWED', 7, 0, 2),
+('BR202609015', 38, '2026-09-24 09:30:00', '2026-10-15 23:59:59', NULL, 'BORROWED', 6, 0, 1),
+('BR202609016', 44, '2026-09-24 15:20:00', '2026-10-15 23:59:59', NULL, 'BORROWED', 8, 0, 2),
+('BR202609017', 46, '2026-09-25 10:10:00', '2026-10-16 23:59:59', NULL, 'BORROWED', 5, 0, 1),
+('BR202609018', 49, '2026-09-25 14:30:00', '2026-11-09 23:59:59', NULL, 'BORROWED', 12, 0, 2),
+('BR202609019', 50, '2026-09-25 11:40:00', '2026-11-09 23:59:59', NULL, 'BORROWED', 10, 0, 1),
+('BR202609020', 6, '2026-09-25 09:50:00', '2026-10-16 23:59:59', NULL, 'BORROWED', 4, 0, 2);
+
+-- Quá hạn (10 phiếu - chưa trả, đã quá hạn)
+INSERT INTO borrows (borrow_code, customer_id, borrow_date, due_date, return_date, status, total_books, late_fee, created_by) VALUES
+('BR202608001', 4, '2026-08-01 10:00:00', '2026-08-15 23:59:59', NULL, 'OVERDUE', 2, 200000, 1),
+('BR202608002', 9, '2026-08-05 11:30:00', '2026-08-19 23:59:59', NULL, 'OVERDUE', 1, 185000, 2),
+('BR202608003', 13, '2026-08-10 09:15:00', '2026-08-24 23:59:59', NULL, 'OVERDUE', 2, 155000, 1),
+('BR202608004', 19, '2026-08-15 14:20:00', '2026-08-29 23:59:59', NULL, 'OVERDUE', 3, 135000, 2),
+('BR202608005', 27, '2026-08-20 10:45:00', '2026-09-03 23:59:59', NULL, 'OVERDUE', 1, 110000, 1),
+('BR202608006', 1, '2026-09-01 13:00:00', '2026-09-15 23:59:59', NULL, 'OVERDUE', 2, 50000, 2),
+('BR202608007', 10, '2026-09-05 11:20:00', '2026-09-19 23:59:59', NULL, 'OVERDUE', 1, 30000, 1),
+('BR202608008', 17, '2026-09-08 15:30:00', '2026-09-22 23:59:59', NULL, 'OVERDUE', 1, 15000, 2),
+('BR202608009', 24, '2026-09-10 09:40:00', '2026-09-24 23:59:59', NULL, 'OVERDUE', 2, 5000, 1),
+('BR202608010', 31, '2026-09-12 10:50:00', '2026-09-26 23:59:59', NULL, 'OVERDUE', 1, 0, 2);
+
+-- Borrow Items (chi tiết sách cho thuê)
+INSERT INTO borrow_items (borrow_id, document_id, quantity, returned, return_date) VALUES
+-- BR202301001 (đã trả)
+(1, 1, 1, 1, '2023-01-28 14:30:00'),
+(1, 5, 1, 1, '2023-01-28 14:30:00'),
+-- BR202301002 (đã trả)
+(2, 31, 1, 1, '2023-02-09 16:45:00'),
+(2, 32, 1, 1, '2023-02-09 16:45:00'),
+(2, 33, 1, 1, '2023-02-09 16:45:00'),
+-- BR202609001 (đang thuê) - id=11
+(11, 1, 1, 0, NULL),
+(11, 2, 1, 0, NULL),
+(11, 3, 1, 0, NULL),
+(11, 4, 1, 0, NULL),
+(11, 5, 1, 0, NULL),
+(11, 6, 1, 0, NULL),
+-- BR202608001 (quá hạn) - id=31
+(31, 10, 1, 0, NULL),
+(31, 11, 1, 0, NULL);
+
+-- Sales (30 đơn bán sách)
+INSERT INTO sales (sale_code, customer_id, sale_date, total_amount, discount_amount, final_amount, payment_method, created_by) VALUES
+('SL202401001', 5, '2024-01-10 10:30:00', 2000000, 300000, 1700000, 'CASH', 1),
+('SL202401002', 15, '2024-01-15 11:45:00', 1500000, 225000, 1275000, 'CARD', 2),
+('SL202401003', 23, '2024-01-20 14:20:00', 3000000, 450000, 2550000, 'TRANSFER', 1),
+('SL202401004', 30, '2024-01-25 09:15:00', 1200000, 180000, 1020000, 'CASH', 2),
+('SL202401005', NULL, '2024-02-01 10:00:00', 800000, 0, 800000, 'CASH', 1),
+('SL202402001', 3, '2024-02-10 13:30:00', 2500000, 125000, 2375000, 'CARD', 2),
+('SL202402002', 8, '2024-02-15 11:20:00', 1800000, 90000, 1710000, 'CASH', 1),
+('SL202402003', 11, '2024-02-20 15:45:00', 3200000, 480000, 2720000, 'TRANSFER', 2),
+('SL202402004', 14, '2024-02-25 09:30:00', 950000, 142500, 807500, 'CASH', 1),
+('SL202402005', NULL, '2024-03-01 10:15:00', 600000, 0, 600000, 'CASH', 2),
+('SL202403001', 20, '2024-03-10 14:00:00', 2200000, 110000, 2090000, 'CARD', 1),
+('SL202403002', 25, '2024-03-15 11:30:00', 1600000, 240000, 1360000, 'TRANSFER', 2),
+('SL202403003', 28, '2024-03-20 10:45:00', 2800000, 420000, 2380000, 'CASH', 1),
+('SL202403004', 32, '2024-03-25 13:20:00', 1100000, 165000, 935000, 'CARD', 2),
+('SL202403005', NULL, '2024-04-01 09:00:00', 750000, 0, 750000, 'CASH', 1),
+('SL202404001', 35, '2024-04-10 14:30:00', 4000000, 600000, 3400000, 'TRANSFER', 2),
+('SL202404002', 41, '2024-04-15 11:50:00', 3500000, 525000, 2975000, 'CARD', 1),
+('SL202404003', 38, '2024-04-20 10:20:00', 2700000, 405000, 2295000, 'CASH', 2),
+('SL202404004', 44, '2024-04-25 15:10:00', 1900000, 285000, 1615000, 'TRANSFER', 1),
+('SL202404005', NULL, '2024-05-01 09:40:00', 850000, 0, 850000, 'CASH', 2),
+('SL202405001', 46, '2024-05-10 13:45:00', 3100000, 465000, 2635000, 'CARD', 1),
+('SL202405002', 49, '2024-05-15 11:25:00', 5000000, 750000, 4250000, 'TRANSFER', 2),
+('SL202405003', 50, '2024-05-20 10:35:00', 4500000, 675000, 3825000, 'CARD', 1),
+('SL202405004', 6, '2024-05-25 14:55:00', 1400000, 70000, 1330000, 'CASH', 2),
+('SL202405005', NULL, '2024-06-01 09:20:00', 920000, 0, 920000, 'CASH', 1),
+('SL202406001', 12, '2024-06-10 13:10:00', 2400000, 120000, 2280000, 'CARD', 2),
+('SL202406002', 16, '2024-06-15 11:40:00', 2100000, 105000, 1995000, 'TRANSFER', 1),
+('SL202406003', 18, '2024-06-20 10:25:00', 2900000, 145000, 2755000, 'CASH', 2),
+('SL202406004', 22, '2024-06-25 15:05:00', 1700000, 85000, 1615000, 'CARD', 1),
+('SL202406005', NULL, '2024-07-01 09:50:00', 680000, 0, 680000, 'CASH', 2);
+
+-- Sale Items (chi tiết đơn bán)
+INSERT INTO sale_items (sale_id, document_id, quantity, unit_price) VALUES
+-- SL202401001
+(1, 1, 2, 450000),
+(1, 5, 1, 420000),
+(1, 31, 2, 380000),
+-- SL202401002
+(2, 9, 1, 680000),
+(2, 10, 1, 620000),
+(2, 32, 1, 320000),
+-- SL202406005
+(30, 46, 1, 250000),
+(30, 47, 1, 220000),
+(30, 48, 1, 280000);
+
+-- Fines (15 khoản phạt: 10 chưa trả, 5 đã trả)
+INSERT INTO fines (customer_id, borrow_id, fine_type, amount, reason, status, paid_date, paid_by) VALUES
+-- Đã thanh toán (5 khoản)
+(5, 3, 'LATE_RETURN', 20000, 'Trả sách trễ 4 ngày (5000/ngày)', 'PAID', '2023-03-05 10:00:00', 1),
+(9, 10, 'LATE_RETURN', 12000, 'Trả sách trễ 4 ngày (3000/ngày)', 'PAID', '2023-05-20 11:30:00', 2),
+-- Chưa thanh toán (10 khoản - khớp với quá hạn ở borrows id 31-40)
+(4, 31, 'LATE_RETURN', 200000, 'Quá hạn 40 ngày (5000/ngày)', 'UNPAID', NULL, NULL),
+(9, 32, 'LATE_RETURN', 185000, 'Quá hạn 37 ngày (5000/ngày)', 'UNPAID', NULL, NULL),
+(13, 33, 'LATE_RETURN', 155000, 'Quá hạn 31 ngày (5000/ngày)', 'UNPAID', NULL, NULL),
+(19, 34, 'LATE_RETURN', 135000, 'Quá hạn 27 ngày (5000/ngày)', 'UNPAID', NULL, NULL),
+(27, 35, 'LATE_RETURN', 110000, 'Quá hạn 22 ngày (5000/ngày)', 'UNPAID', NULL, NULL),
+(1, 36, 'LATE_RETURN', 50000, 'Quá hạn 10 ngày (5000/ngày)', 'UNPAID', NULL, NULL),
+(10, 37, 'LATE_RETURN', 30000, 'Quá hạn 6 ngày (5000/ngày)', 'UNPAID', NULL, NULL),
+(17, 38, 'LATE_RETURN', 15000, 'Quá hạn 3 ngày (5000/ngày)', 'UNPAID', NULL, NULL),
+(24, 39, 'LATE_RETURN', 5000, 'Quá hạn 1 ngày (5000/ngày)', 'UNPAID', NULL, NULL),
+(31, 40, 'LATE_RETURN', 0, 'Mới quá hạn hôm nay', 'UNPAID', NULL, NULL),
+-- Phạt khác
+(13, NULL, 'DAMAGED', 150000, 'Làm hư sách Clean Code', 'UNPAID', NULL, NULL);
 

@@ -53,6 +53,7 @@ public final class AppConstants {
     public static final Color STATUS_CLOSED    = new Color(148, 163, 184);
 
     // ── Fonts ──
+    public static final String FONT_FAMILY  = "SansSerif";
     public static final Font FONT_TITLE     = new Font("SansSerif", Font.BOLD, 24);
     public static final Font FONT_SUBTITLE  = new Font("SansSerif", Font.BOLD, 18);
     public static final Font FONT_HEADING   = new Font("SansSerif", Font.BOLD, 14);
@@ -106,6 +107,91 @@ public final class AppConstants {
             case "CANCELLED" -> STATUS_CANCELLED;
             case "ACTIVE"    -> STATUS_ACTIVE;
             case "CLOSED"    -> STATUS_CLOSED;
+            default -> TEXT_SECONDARY;
+        };
+    }
+
+    // ── Customer Status ──
+    public static final String CUSTOMER_STATUS_ACTIVE = "ACTIVE";
+    public static final String CUSTOMER_STATUS_SUSPENDED = "SUSPENDED";
+    public static final String CUSTOMER_STATUS_INACTIVE = "INACTIVE";
+
+    // ── Borrow Status ──
+    public static final String BORROW_STATUS_BORROWED = "BORROWED";
+    public static final String BORROW_STATUS_RETURNED = "RETURNED";
+    public static final String BORROW_STATUS_OVERDUE = "OVERDUE";
+
+    // ── Fine Type ──
+    public static final String FINE_TYPE_LATE_RETURN = "LATE_RETURN";
+    public static final String FINE_TYPE_DAMAGED = "DAMAGED";
+    public static final String FINE_TYPE_LOST = "LOST";
+
+    // ── Fine Status ──
+    public static final String FINE_STATUS_UNPAID = "UNPAID";
+    public static final String FINE_STATUS_PAID = "PAID";
+    public static final String FINE_STATUS_WAIVED = "WAIVED";
+
+    // ── Membership Status ──
+    public static final String MEMBERSHIP_STATUS_ACTIVE = "ACTIVE";
+    public static final String MEMBERSHIP_STATUS_EXPIRED = "EXPIRED";
+    public static final String MEMBERSHIP_STATUS_SUSPENDED = "SUSPENDED";
+
+    // ── Membership Tiers ──
+    public static final String TIER_BRONZE = "BRONZE";
+    public static final String TIER_SILVER = "SILVER";
+    public static final String TIER_GOLD = "GOLD";
+    public static final String TIER_PLATINUM = "PLATINUM";
+
+    // ── Payment Method ──
+    public static final String PAYMENT_CASH = "CASH";
+    public static final String PAYMENT_CARD = "CARD";
+    public static final String PAYMENT_TRANSFER = "TRANSFER";
+
+    /**
+     * Lấy màu theo trạng thái khách hàng
+     */
+    public static Color getCustomerStatusColor(String status) {
+        return switch (status) {
+            case CUSTOMER_STATUS_ACTIVE -> STATUS_ACTIVE;
+            case CUSTOMER_STATUS_SUSPENDED -> WARNING;
+            case CUSTOMER_STATUS_INACTIVE -> STATUS_CLOSED;
+            default -> TEXT_SECONDARY;
+        };
+    }
+
+    /**
+     * Lấy màu theo trạng thái mượn sách
+     */
+    public static Color getBorrowStatusColor(String status) {
+        return switch (status) {
+            case BORROW_STATUS_BORROWED -> STATUS_APPROVED;
+            case BORROW_STATUS_RETURNED -> STATUS_RECEIVED;
+            case BORROW_STATUS_OVERDUE -> DANGER;
+            default -> TEXT_SECONDARY;
+        };
+    }
+
+    /**
+     * Lấy màu theo trạng thái phạt
+     */
+    public static Color getFineStatusColor(String status) {
+        return switch (status) {
+            case FINE_STATUS_UNPAID -> DANGER;
+            case FINE_STATUS_PAID -> STATUS_RECEIVED;
+            case FINE_STATUS_WAIVED -> WARNING;
+            default -> TEXT_SECONDARY;
+        };
+    }
+
+    /**
+     * Lấy màu theo hạng thành viên
+     */
+    public static Color getTierColor(String tier) {
+        return switch (tier) {
+            case TIER_BRONZE -> new Color(205, 127, 50);   // Bronze
+            case TIER_SILVER -> new Color(192, 192, 192);  // Silver
+            case TIER_GOLD -> new Color(255, 215, 0);      // Gold
+            case TIER_PLATINUM -> new Color(229, 228, 226); // Platinum
             default -> TEXT_SECONDARY;
         };
     }
