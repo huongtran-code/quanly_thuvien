@@ -209,7 +209,7 @@ public class AIAssistantPanel extends JPanel {
         SwingWorker<String, Void> worker = new SwingWorker<>() {
             @Override
             protected String doInBackground() throws Exception {
-                String dynamicPrompt = buildDynamicSystemPrompt();
+                String dynamicPrompt = buildDynamicSystemPrompt(text);
                 return AIService.chat(text, dynamicPrompt);
             }
 
@@ -425,19 +425,39 @@ public class AIAssistantPanel extends JPanel {
     }
 
     /**
-     * Tự động tổng hợp ngữ cảnh dữ liệu thực tế từ CSDL để AI trả lời chính xác
+     * Tự động tổng hợp ngữ cảnh dữ liệu thực tế từ CSDL để AI trả lời chính xác.
+     * Luôn gửi toàn bộ danh sách (tóm tắt gọn) + kết quả tìm kiếm theo từ khóa câu hỏi.
      */
-    private String buildDynamicSystemPrompt() {
+    private String buildDynamicSystemPrompt(String userQuestion) {
         StringBuilder sb = new StringBuilder(SYSTEM_PROMPT);
         try {
             com.library.dao.DocumentDAO docDAO = new com.library.dao.DocumentDAO();
-            java.util.List<com.library.model.Document> docs = docDAO.findAll();
-            if (docs != null && !docs.isEmpty()) {
-                sb.append("\n\n=== DỮ LIỆU THỰC TẾ TRONG KHO THƯ VIỆN HIỆN TẠI (Tổng: ").append(docs.size()).append(" tài liệu) ===\n");
-                int limit = Math.min(docs.size(), 60);
-                for (int i = 0; i < limit; i++) {
-                    com.library.model.Document d = docs.get(i);
-                    sb.append(String.format("- ID %d: \"%s\" | Tác giả: %s | Danh mục: %s | Tồn kho: %d | Đơn giá: %,d ₫ | NXB: %s (%d)\n",
+
+            // 1. Danh mục ĐẦY ĐỦ (format ngắn gọn) để AI không bỏ sót tài liệu nào
+            java.util.List<com.library.model.Document> allDocs = docDAO.findAll();
+            if (allDocs != null && !allDocs.isEmpty()) {
+                sb.append("\n\n=== DANH MỤC ĐẦY ĐỦ KHO THƯ VIỆN (Tổng: ")
+                  .append(allDocs.size()).append(" tài liệu) ===\n");
+                for (com.library.model.Document d : allDocs) {
+                    sb.append(String.format("ID%d|%s|%s|%s|SL:%d|Giá:%,d₫\n",
+                            d.getId(),
+                            d.getTitle(),
+                            d.getAuthor() != null ? d.getAuthor() : "?",
+                            d.getCategoryName() != null ? d.getCategoryName() : "?",
+                            d.getStockQuantity(),
+                            (long) d.getUnitPrice()));
+                }
+            }
+
+            // 2. Tìm kiếm có chủ đích theo từ khóa trong câu hỏi người dùng
+            String keyword = extractKeyword(userQuestion);
+            if (!keyword.isEmpty()) {
+                java.util.List<com.library.model.Document> matched = docDAO.findByKeyword(keyword);
+                if (matched != null && !matched.isEmpty()) {
+                    sb.append("\n=== KẾT QUẢ TÌM KIẾM CHO TỪ KHÓA \"").append(keyword).append("\" ===\n");
+                    for (com.library.model.Document d : matched) {
+                        sb.append(String.format(
+                            "- ID %d: \"%s\" | Tác giả: %s | Danh mục: %s | Tồn kho: %d | Đơn giá: %,d ₫ | NXB: %s (%d)\n",
                             d.getId(), d.getTitle(),
                             d.getAuthor() != null && !d.getAuthor().isEmpty() ? d.getAuthor() : "Chưa rõ",
                             d.getCategoryName() != null ? d.getCategoryName() : "Khác",
@@ -445,12 +465,11 @@ public class AIAssistantPanel extends JPanel {
                             (long) d.getUnitPrice(),
                             d.getPublisher() != null && !d.getPublisher().isEmpty() ? d.getPublisher() : "N/A",
                             d.getPublishYear()));
-                }
-                if (docs.size() > limit) {
-                    sb.append("... và ").append(docs.size() - limit).append(" tài liệu khác.\n");
+                    }
                 }
             }
 
+            // 3. Ngân sách
             com.library.dao.BudgetDAO budgetDAO = new com.library.dao.BudgetDAO();
             java.util.List<com.library.model.Budget> budgets = budgetDAO.findAll();
             if (budgets != null && !budgets.isEmpty()) {
@@ -464,9 +483,35 @@ public class AIAssistantPanel extends JPanel {
             }
 
             sb.append("\nQUY TẮC PHẢN HỒI QUAN TRỌNG:\n"
-                    + "- Khi người dùng hỏi xem thư viện có những sách gì, sách thuộc lĩnh vực nào, sách nào sắp hết tồn kho, hoặc ngân sách còn bao nhiêu, BẮT BUỘC tra cứu và liệt kê chính xác các cuốn sách từ DỮ LIỆU THỰC TẾ TRONG KHO THƯ VIỆN HIỆN TẠI ở trên kèm số lượng tồn kho và tác giả.\n"
-                    + "- Nếu người dùng hỏi gợi ý sách mới cần mua thêm ngoài danh mục hiện có, hãy đưa ra gợi ý xuất sắc phù hợp xu hướng.");
+                    + "- DANH MỤC ĐẦY ĐỦ KHO THƯ VIỆN chứa TOÀN BỘ tài liệu thực tế. Khi người dùng hỏi về bất kỳ tài liệu nào, BẮT BUỘC tra cứu danh sách đó trước.\n"
+                    + "- Nếu có KẾT QUẢ TÌM KIẾM, hãy ưu tiên dùng thông tin đó để trả lời chi tiết.\n"
+                    + "- Nếu không tìm thấy tài liệu nào phù hợp trong DANH MỤC, hãy nói rõ thư viện chưa có tài liệu đó.\n"
+                    + "- Nếu người dùng hỏi gợi ý sách mới cần mua thêm, hãy đưa ra gợi ý phù hợp xu hướng.");
         } catch (Exception ignored) {}
         return sb.toString();
+    }
+
+    /**
+     * Trích xuất từ khóa tìm kiếm từ câu hỏi, lọc bỏ từ dừng tiếng Việt.
+     */
+    private String extractKeyword(String question) {
+        if (question == null || question.isBlank()) return "";
+        String cleaned = question.replaceAll("[?!.,;:\"']", " ").trim();
+        java.util.Set<String> stopWords = new java.util.HashSet<>(java.util.Arrays.asList(
+            "cho", "tôi", "biết", "thông", "tin", "về", "của", "sách", "tài", "liệu",
+            "hỏi", "xem", "có", "không", "là", "gì", "thế", "nào", "hay", "và",
+            "trong", "ở", "tìm", "kiếm", "danh", "mục", "hệ", "thống", "thư", "viện",
+            "bạn", "này", "đó", "với", "mua", "mượn", "trả", "the", "a", "an"
+        ));
+        String[] words = cleaned.split("\\s+");
+        StringBuilder kw = new StringBuilder();
+        for (String w : words) {
+            if (!stopWords.contains(w.toLowerCase()) && w.length() >= 2) {
+                if (kw.length() > 0) kw.append(" ");
+                kw.append(w);
+                if (kw.length() > 50) break;
+            }
+        }
+        return kw.toString().trim();
     }
 }
