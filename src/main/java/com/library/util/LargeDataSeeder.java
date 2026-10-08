@@ -14,6 +14,8 @@ import java.util.Random;
 
 /**
  * Script Java tự động sinh 1.000 - 5.000 bản ghi dữ liệu mẫu qua 5 năm (2021 - 2026)
+ * bao gồm: documents, purchase_orders, stock_transactions, purchase_suggestions,
+ * customers, borrows, fines, và sales (doanh thu bán sách mỗi tháng liên tục)
  * chạy siêu tốc với JDBC Batch Processing trong < 1 giây!
  */
 public class LargeDataSeeder {
@@ -66,6 +68,10 @@ public class LargeDataSeeder {
         try (Connection conn = DatabaseConnection.getInstance().getConnection()) {
             conn.setAutoCommit(false); // Tắt autocommit để batch insert siêu tốc
 
+            // 0. Dọn dẹp dữ liệu cũ trước khi seed lại
+            cleanupSeededData(conn);
+            System.out.println("✓ Da don dep du lieu cu");
+
             // 1. Kiểm tra / Tạo Ngân sách cho 5 năm (2021 - 2026)
             List<Integer> budgetIds = seedBudgets(conn);
             System.out.println("✓ Da tao Ngan sach cho 5 nam (2021-2026)");
@@ -104,6 +110,10 @@ public class LargeDataSeeder {
             
             seedFines(conn, customerIds, borrowIds, 50);
             System.out.println("✓ Da sinh 50 bản ghi Phat (fines)");
+
+            // 9. Sinh dữ liệu bán sách (sales) - mỗi tháng từ 01/2021 đến 10/2026
+            seedSales(conn, customerIds, documentIds, adminId);
+            System.out.println("✓ Da sinh du lieu Don ban sach (sales) tu 01/2021 den 10/2026");
 
             conn.commit(); // Commit toàn bộ dữ liệu
             conn.setAutoCommit(true);
@@ -327,9 +337,39 @@ public class LargeDataSeeder {
         return 1;
     }
 
+    /**
+     * Dọn dẹp dữ liệu do seeder sinh ra (giữ nguyên dữ liệu gốc từ schema.sql).
+     * Tắt FK check tạm thời để TRUNCATE an toàn.
+     */
+    private static void cleanupSeededData(Connection conn) throws Exception {
+        try (Statement st = conn.createStatement()) {
+            st.execute("SET FOREIGN_KEY_CHECKS = 0");
+            // Xoá toàn bộ bảng do seeder sinh (không ảnh hưởng bảng nằm trong schema.sql)
+            st.execute("TRUNCATE TABLE sale_items");
+            st.execute("TRUNCATE TABLE sales");
+            st.execute("TRUNCATE TABLE fines");
+            st.execute("TRUNCATE TABLE borrow_items");
+            st.execute("TRUNCATE TABLE borrows");
+            st.execute("TRUNCATE TABLE customers");
+            st.execute("TRUNCATE TABLE stock_transactions");
+            st.execute("TRUNCATE TABLE purchase_suggestions");
+            st.execute("TRUNCATE TABLE purchase_order_items");
+            // Chỉ xóa đơn mua do seeder tạo (format PO-YYYY-NNNN)
+            st.execute("DELETE FROM purchase_orders WHERE order_code LIKE 'PO-%-%'");
+            // Chỉ xóa ngân sách do seeder tạo (chứa 'Quý')
+            st.execute("DELETE FROM budgets WHERE budget_name LIKE 'Ngân sách Quý%'");
+            // Chỉ xóa documents do seeder tạo (ISBN format 978-604-XXXX)
+            st.execute("DELETE FROM documents WHERE isbn LIKE '978-604-%'");
+            st.execute("SET FOREIGN_KEY_CHECKS = 1");
+        }
+    }
+
     private static LocalDateTime randomDateTime(int startYear, int endYear) {
         int year = startYear + random.nextInt(endYear - startYear + 1);
-        int month = random.nextInt(12) + 1;
+        // Nếu là năm hiện tại (endYear), chỉ sinh đến tháng hiện tại
+        int currentMonth = java.time.LocalDate.now().getMonthValue();
+        int maxMonth = (year == endYear) ? currentMonth : 12;
+        int month = random.nextInt(maxMonth) + 1;
         int day = random.nextInt(28) + 1;
         int hour = random.nextInt(12) + 8; // 8am to 8pm
         int min = random.nextInt(60);
@@ -338,19 +378,23 @@ public class LargeDataSeeder {
 
     private static List<Integer> seedCustomers(Connection conn, int count) throws Exception {
         List<Integer> ids = new ArrayList<>();
-        String sql = "INSERT INTO customers (full_name, email, phone, address, status, total_borrowed, total_purchases, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
-        
+        String sql = "INSERT INTO customers (customer_code, full_name, email, phone, address, " +
+                     "registration_date, status, total_borrowed, created_at) " +
+                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+
         try (PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             for (int i = 1; i <= count; i++) {
                 String name = PERSON_NAMES[random.nextInt(PERSON_NAMES.length)] + " " + i;
-                ps.setString(1, name);
-                ps.setString(2, "customer" + i + "@example.com");
-                ps.setString(3, "09" + String.format("%08d", random.nextInt(100000000)));
-                ps.setString(4, "Địa chỉ " + i + ", Hà Nội");
-                ps.setString(5, "ACTIVE");
-                ps.setInt(6, random.nextInt(10));
-                ps.setInt(7, random.nextInt(5));
-                ps.setObject(8, randomDateTime(2021, 2025));
+                LocalDateTime createdAt = randomDateTime(2021, 2026);
+                ps.setString(1, String.format("CUS%06d", i));                         // customer_code
+                ps.setString(2, name);                                                  // full_name
+                ps.setString(3, "customer" + i + "@example.com");                       // email
+                ps.setString(4, "09" + String.format("%08d", random.nextInt(100000000))); // phone
+                ps.setString(5, "Địa chỉ " + i + ", Hà Nội");                          // address
+                ps.setObject(6, createdAt.toLocalDate());                               // registration_date
+                ps.setString(7, "ACTIVE");                                              // status
+                ps.setInt(8, random.nextInt(10));                                       // total_borrowed
+                ps.setObject(9, createdAt);                                             // created_at
                 ps.addBatch();
             }
             ps.executeBatch();
@@ -368,7 +412,7 @@ public class LargeDataSeeder {
         
         try (PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             for (int i = 1; i <= count; i++) {
-                LocalDateTime borrowDate = randomDateTime(2023, 2025);
+                LocalDateTime borrowDate = randomDateTime(2021, 2026);
                 LocalDateTime dueDate = borrowDate.plusDays(14);
                 boolean isReturned = random.nextBoolean();
                 LocalDateTime returnDate = isReturned ? borrowDate.plusDays(random.nextInt(20)) : null;
@@ -430,7 +474,7 @@ public class LargeDataSeeder {
                         amount = 50000.0;
                 }
                 
-                LocalDateTime createdAt = randomDateTime(2023, 2025);
+                LocalDateTime createdAt = randomDateTime(2021, 2026);
                 LocalDateTime paidDate = status.equals("PAID") ? createdAt.plusDays(random.nextInt(30)) : null;
                 
                 ps.setInt(1, customerIds.get(random.nextInt(customerIds.size())));
@@ -444,6 +488,94 @@ public class LargeDataSeeder {
                 ps.addBatch();
             }
             ps.executeBatch();
+        }
+    }
+
+    /**
+     * Sinh dữ liệu bán sách (sales + sale_items) đảm bảo mỗi tháng
+     * từ 01/2021 đến 10/2026 đều có dữ liệu doanh thu.
+     * Mỗi tháng sinh 5-10 đơn bán, mỗi đơn có 1-3 sách.
+     */
+    private static void seedSales(Connection conn, List<Integer> customerIds,
+                                   List<Integer> documentIds, int adminId) throws Exception {
+        String saleSql = "INSERT INTO sales (sale_code, customer_id, sale_date, " +
+                         "total_amount, discount_amount, final_amount, payment_method, notes, created_by) " +
+                         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        String itemSql = "INSERT INTO sale_items (sale_id, document_id, quantity, unit_price) " +
+                         "VALUES (?, ?, ?, ?)";
+
+        String[] paymentMethods = {"CASH", "CARD", "TRANSFER"};
+        int saleCounter = 1;
+
+        // Duyệt từng năm-tháng từ 2021/01 đến 2026/10
+        for (int year = 2021; year <= 2026; year++) {
+            int maxMonth = (year == 2026) ? 10 : 12; // chỉ đến tháng 10 năm 2026
+            for (int month = 1; month <= maxMonth; month++) {
+                int ordersThisMonth = 5 + random.nextInt(6); // 5-10 đơn mỗi tháng
+                int maxDay = java.time.YearMonth.of(year, month).lengthOfMonth();
+
+                for (int o = 0; o < ordersThisMonth; o++) {
+                    // Ngày ngẫu nhiên trong tháng
+                    int day = 1 + random.nextInt(maxDay);
+                    int hour = 8 + random.nextInt(10);
+                    int min  = random.nextInt(60);
+                    java.time.LocalDateTime saleDate =
+                            java.time.LocalDateTime.of(year, month, day, hour, min);
+
+                    // Khách hàng (có thể null = khách vãng lai)
+                    Integer custId = (random.nextInt(3) == 0)
+                            ? null
+                            : customerIds.get(random.nextInt(customerIds.size()));
+
+                    // Tính tổng tiền từ 1-3 sách
+                    int numItems = 1 + random.nextInt(3);
+                    double totalAmount = 0;
+                    java.util.List<int[]> cartItems = new java.util.ArrayList<>(); // [docId, qty, price]
+                    for (int k = 0; k < numItems; k++) {
+                        int docId  = documentIds.get(random.nextInt(documentIds.size()));
+                        int qty    = 1 + random.nextInt(3);
+                        double price = (100 + random.nextInt(900)) * 1000.0;
+                        totalAmount += qty * price;
+                        cartItems.add(new int[]{docId, qty, (int) price});
+                    }
+                    double discount    = (random.nextInt(5) == 0) ? totalAmount * 0.05 : 0;
+                    double finalAmount = totalAmount - discount;
+                    String payMethod   = paymentMethods[random.nextInt(paymentMethods.length)];
+                    String saleCode    = String.format("SL%d%02d%05d", year, month, saleCounter++);
+                    String notes       = "Bán sách tháng " + month + "/" + year;
+
+                    // Insert sale
+                    try (PreparedStatement ps = conn.prepareStatement(saleSql,
+                            java.sql.Statement.RETURN_GENERATED_KEYS)) {
+                        ps.setString(1, saleCode);
+                        if (custId != null) ps.setInt(2, custId); else ps.setNull(2, java.sql.Types.INTEGER);
+                        ps.setObject(3, saleDate);
+                        ps.setDouble(4, totalAmount);
+                        ps.setDouble(5, discount);
+                        ps.setDouble(6, finalAmount);
+                        ps.setString(7, payMethod);
+                        ps.setString(8, notes);
+                        ps.setInt(9, adminId);
+                        ps.executeUpdate();
+
+                        java.sql.ResultSet keys = ps.getGeneratedKeys();
+                        if (keys.next()) {
+                            int saleId = keys.getInt(1);
+                            // Insert sale_items
+                            try (PreparedStatement pi = conn.prepareStatement(itemSql)) {
+                                for (int[] item : cartItems) {
+                                    pi.setInt(1, saleId);
+                                    pi.setInt(2, item[0]);
+                                    pi.setInt(3, item[1]);
+                                    pi.setDouble(4, item[2]);
+                                    pi.addBatch();
+                                }
+                                pi.executeBatch();
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

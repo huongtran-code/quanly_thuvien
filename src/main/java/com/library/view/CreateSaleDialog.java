@@ -13,7 +13,10 @@ import com.library.util.Icons;
 
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
+import javax.swing.table.TableRowSorter;
 import java.awt.*;
+import java.awt.event.KeyAdapter;
+import java.awt.event.KeyEvent;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -328,12 +331,47 @@ public class CreateSaleDialog extends JDialog {
         searchDialog.setLayout(new BorderLayout(10, 10));
         searchDialog.getContentPane().setBackground(AppConstants.BG_DARK);
         
-        // Bảng hiển thị sách
+        // ── Panel tìm kiếm ──
+        JPanel searchPanel = new JPanel(new BorderLayout(8, 0));
+        searchPanel.setBackground(AppConstants.BG_CARD);
+        searchPanel.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createMatteBorder(0, 0, 1, 0, AppConstants.BORDER),
+            BorderFactory.createEmptyBorder(10, 12, 10, 12)
+        ));
+
+        JLabel searchIcon = new JLabel(Icons.get("search", 16, AppConstants.TEXT_SECONDARY));
+        searchPanel.add(searchIcon, BorderLayout.WEST);
+
+        JTextField filterField = new JTextField();
+        filterField.setBackground(AppConstants.BG_INPUT);
+        filterField.setForeground(AppConstants.TEXT_PRIMARY);
+        filterField.setCaretColor(AppConstants.TEXT_PRIMARY);
+        filterField.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
+        filterField.setFont(AppConstants.FONT_BODY);
+        filterField.setToolTipText("Tìm theo tên sách, tác giả hoặc ID...");
+
+        JLabel hintLabel = new JLabel("Tìm theo tên sách, tác giả hoặc ID");
+        hintLabel.setForeground(AppConstants.TEXT_MUTED);
+        hintLabel.setFont(AppConstants.FONT_SMALL);
+
+        JPanel fieldPanel = new JPanel(new BorderLayout(4, 2));
+        fieldPanel.setOpaque(false);
+        fieldPanel.add(filterField, BorderLayout.CENTER);
+        fieldPanel.add(hintLabel, BorderLayout.SOUTH);
+        searchPanel.add(fieldPanel, BorderLayout.CENTER);
+
+        searchDialog.add(searchPanel, BorderLayout.NORTH);
+        
+        // ── Bảng hiển thị sách ──
         String[] columns = {"ID", "Tên sách", "Tác giả", "Đơn giá", "Tồn kho"};
         DefaultTableModel model = new DefaultTableModel(columns, 0) {
             @Override
             public boolean isCellEditable(int row, int column) {
                 return false;
+            }
+            @Override
+            public Class<?> getColumnClass(int col) {
+                return col == 0 || col == 4 ? Integer.class : Object.class;
             }
         };
         
@@ -355,14 +393,61 @@ public class CreateSaleDialog extends JDialog {
         table.setSelectionBackground(AppConstants.PRIMARY);
         table.setSelectionForeground(Color.WHITE);
         table.setRowHeight(30);
+        table.setFont(AppConstants.FONT_BODY);
+        table.getTableHeader().setBackground(AppConstants.BG_CARD_HOVER);
+        table.getTableHeader().setForeground(AppConstants.TEXT_PRIMARY);
+        table.getTableHeader().setFont(AppConstants.FONT_HEADING);
+
+        // Cột ID hẹp hơn
+        table.getColumnModel().getColumn(0).setPreferredWidth(50);
+        table.getColumnModel().getColumn(0).setMaxWidth(70);
+
+        // ── Bộ lọc tìm kiếm thời gian thực ──
+        TableRowSorter<DefaultTableModel> sorter = new TableRowSorter<>(model);
+        table.setRowSorter(sorter);
+
+        filterField.addKeyListener(new KeyAdapter() {
+            @Override
+            public void keyReleased(KeyEvent e) {
+                String text = filterField.getText().trim();
+                if (text.isEmpty()) {
+                    sorter.setRowFilter(null);
+                } else {
+                    // Lọc theo cột ID (0), Tên sách (1), Tác giả (2)
+                    sorter.setRowFilter(RowFilter.regexFilter("(?i)" + java.util.regex.Pattern.quote(text), 0, 1, 2));
+                }
+            }
+        });
+
+        // Nhấn Enter để chọn dòng đang highlight
+        filterField.addActionListener(e -> {
+            if (table.getRowCount() == 1) {
+                table.setRowSelectionInterval(0, 0);
+            }
+        });
+
+        // Double-click để chọn nhanh
+        table.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseClicked(java.awt.event.MouseEvent e) {
+                if (e.getClickCount() == 2 && table.getSelectedRow() >= 0) {
+                    int modelRow = table.convertRowIndexToModel(table.getSelectedRow());
+                    int docId = (Integer) model.getValueAt(modelRow, 0);
+                    documentIdField.setText(String.valueOf(docId));
+                    searchDialog.dispose();
+                }
+            }
+        });
         
         JScrollPane scrollPane = new JScrollPane(table);
-        scrollPane.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        scrollPane.getViewport().setBackground(AppConstants.BG_DARK);
+        scrollPane.setBorder(BorderFactory.createLineBorder(AppConstants.BORDER));
         searchDialog.add(scrollPane, BorderLayout.CENTER);
         
-        // Nút chọn
+        // ── Nút chọn / hủy ──
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         buttonPanel.setBackground(AppConstants.BG_DARK);
+        buttonPanel.setBorder(BorderFactory.createEmptyBorder(4, 10, 8, 10));
         
         JButton selectBtn = new JButton("Chọn");
         selectBtn.setIcon(Icons.button("check"));
@@ -371,7 +456,8 @@ public class CreateSaleDialog extends JDialog {
         selectBtn.addActionListener(e -> {
             int selectedRow = table.getSelectedRow();
             if (selectedRow >= 0) {
-                int docId = (Integer) model.getValueAt(selectedRow, 0);
+                int modelRow = table.convertRowIndexToModel(selectedRow);
+                int docId = (Integer) model.getValueAt(modelRow, 0);
                 documentIdField.setText(String.valueOf(docId));
                 searchDialog.dispose();
             } else {
@@ -390,7 +476,7 @@ public class CreateSaleDialog extends JDialog {
         
         searchDialog.add(buttonPanel, BorderLayout.SOUTH);
         
-        searchDialog.setSize(700, 500);
+        searchDialog.setSize(720, 520);
         searchDialog.setLocationRelativeTo(this);
         searchDialog.setVisible(true);
     }
@@ -409,9 +495,8 @@ public class CreateSaleDialog extends JDialog {
         double discount = 0;
         CustomerItem selected = (CustomerItem) customerCombo.getSelectedItem();
         if (selected != null && selected.customer != null) {
-            // Get discount from customer's active membership
-            // For now, set to 0 - can be enhanced to fetch from CustomerMembershipDAO
-            discount = 0;
+            // Tính giảm giá từ gói thành viên của khách hàng
+            discount = saleController.calculateDiscount(selected.customer.getId(), total);
         }
         
         double finalAmount = total - discount;
